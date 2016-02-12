@@ -1,0 +1,8 @@
+[package]
+name = "cmaes"
+version = "0.1.0"
+authors = ["pengowen123 <pengowen816@gmail.com>"]
+
+[dependencies]
+la = "0.2"
+rand = "0.3"
