@@ -1,8 +1,7 @@
 # cmaes
 [![Build Status](https://travis-ci.org/pengowen123/cmaes.svg?branch=master)](https://travis-ci.org/pengowen123/cmaes)
 
-An implementation of the CMA-ES optimization algorithm, written in Rust.
-
+An easy to use, multithreaded optimization library.
 [CMA-ES](https://en.wikipedia.org/wiki/CMA-ES) is an optimization algorithm designed for complex problems, with little knowledge of the problem. Currently compiles on Rust version 1.6.0 stable. Future versions should be okay.
 
 ## Installation
