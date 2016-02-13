@@ -1,5 +1,9 @@
 target/
 
+release/
+target/debug/
 Cargo.lock
+
 .vimrc
+
 *.swp
