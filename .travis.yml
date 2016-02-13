@@ -1,25 +1,19 @@
 language: rust
 sudo: false
-
 rust:
-  - nightly
-  - beta
-  - stable
-
+- nightly
+- beta
+- stable
 before_script:
-  - pip install 'travis-cargo<0.2' --user && export PATH=$HOME/.local/bin:$PATH
-
+- pip install 'travis-cargo<0.2' --user && export PATH=$HOME/.local/bin:$PATH
 script:
-  - |
-      travis-cargo build &&
-      travis-cargo test &&
-      travis-cargo --only beta doc
-
+- |
+  travis-cargo build &&
+  travis-cargo test &&
+  travis-cargo --only beta doc
 after_success:
-  - travis-cargo --only beta doc-upload
-
+- travis-cargo --only beta doc-upload
 env:
   global:
-    - TRAVIS_CARGO_NIGHTLY_FEATURE=""
-    - secure: EtzlN0IWmi9R7BF03P4qTt8lvUGuZYM6yNbBvDXJ2lyIKm5ZAp7BLkXL0xqS8hOjhOjUW38CeB00rPkVMs8FhmY/FtD0fLL7J4qMMrGYCanGcVPUYjdiJgujeYm+uFrCCUi5NZqB8u+mMfoelGQ6JBpifnYhcTjhNGivOVtRSr14rcf3uuaBcbTi50//JbhHLdcah211x9oNkO00TZPs+uw8zNL/P5bdQvp6Ir7oarYyIOAqhH/QwSZ2+Tke306YlijH5ftJykGSowct331vrN82XoekH3T5C7oFjIFfswzGDnrIh8SuD2nuIrBxmQkw/BDkO/YpvUsE69GKDzFAs9uFkGLxc69u46IGf01yb0Q30RPQBK7+N6030Uos4Ff/hX+inmwpf9I32EGpRtOrX5ym7gliiE9aHy0QlsKh/pzd5rNr11NOQRG2k1o4Xjh2Wtf9H7Vc9DyxK1DLX+76ZSUzvbxHJYoPoXnfWjlu4hwLQ0BevHopOlP+ZDat8yxgwZcl5TFbg3urzF/LRrqUf1ZN6cm5FiWWuqh1/RBPqYE8ZEssDq7OtVepm0gZP3KLpioKrytNFqaVZn2uTlWQl+ZpoEhxtfFEINBg3xP99/T3d5VZYmkWRDdGwiRfMSAUZ1mvjjj8nhWo0CPFYF03MUyDYR2nCZo7LabemxMCkM0=
-
+  - TRAVIS_CARGO_NIGHTLY_FEATURE=""
+  - secure: atOB7LRr2VRdKyHGmXy2LDV9ZveUWRYM/qLM/sDckYYDLDCiQf8cl0lxOGjKTMZBEVnDXA70qxakRu5n+cYah22GUtt6e7ecQgd/SqQ7ewwAH18Vze9IdI2ggbm9e0g8ddvZ/BWTk5cLCLLvV97qFwfB50AIgY5aKAUaJs+uTB9DypRGibjZedE8vj9mh4O0c6YyVqsEXxaGBJ4aFf+bHY+CPFEncz7TTVjbNI8qUZwbbeu4pDcmDIwkemzcfGDqtYhgnzUmLfzC2jtWxWHWjGFuTaHFBLZl5QIZ/rDBY2niDpLZ666NpRYli6KdRmA9t3hVvgDtn6ZqY7Rlcr7llRFix9tNKcn8tS3y6XA3qMIYs/F8FJKZp/m/2LF6jZ2C8OJU2mQb/kzXHklVatAcHpROXo7gYWvnHkkYJ0p2ONtbgMrrAVSrtSTB0Mh0UmMdNNZbs7zzqqgSGN2aRP2EY8iTjzO+3bX43eAqyhNlsx28v2wQkWiO9Ay5moQqHQ2rvcU7NdXDZlZWmrRj/3zW8hqYdtZusgTNnqn8aYf5f51GIRN4avNpQMW08grKqZD6f1tjHII7tCnLxnmXnfJQhWhFD7qTtQk02BV2Vt3ba7dO6VHDcBtzdgfsD5jayRe1bhqLjsgrH+OAl1+5lWQMrgDtMRCmtrltsnc9+gAkGoU=

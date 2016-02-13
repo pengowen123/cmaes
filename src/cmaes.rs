@@ -134,9 +134,7 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Vec<f64>
                 for _ in 0..t as usize {
                     let random_values;
 
-                    {
-                        random_values = vec![dist.ind_sample(&mut rand::thread_rng()); d];
-                    }
+                    random_values = vec![dist.ind_sample(&mut rand::thread_rng()); d];
 
                     // Sample multivariate normal
                     let parameters = mul_vec_2(&*thread_values.get_data(), &random_values);
