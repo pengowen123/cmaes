@@ -12,6 +12,11 @@ Add this to your Cargo.toml:
 cmaes = { git = "https://github.com/pengowen123/cmaes" }
 ```
 
+And this to your crate root:
+```rust
+extern crate cmaes;
+```
+
 Here is a simple example:
 ```rust
 extern crate cmaes;
