@@ -36,4 +36,4 @@ fn main() {
 }
 ```
 
-See the documentation for complete instructions.
+See the [documentation](http://pengowen123.github.io/cmaes/cmaes/index.html) for complete instructions.
