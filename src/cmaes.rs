@@ -54,7 +54,7 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Vec<f64>
     let mut eigenvectors = Matrix::id(d, d);
     let mut eigenvalues = Matrix::vector(vec![1.0; d]);
     let mut mean_vector = vec![random(); d];
-    let mut step_size = 0.3;
+    let mut step_size = options.initial_step_size;
     let mut path_s: Matrix<f64> = Matrix::vector(vec![0.0; d]);
     let mut path_c: Matrix<f64> = Matrix::vector(vec![0.0; d]);
     let mut inv_sqrt_cov: Matrix<f64> = Matrix::id(d, d);

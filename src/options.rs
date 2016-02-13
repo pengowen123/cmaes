@@ -36,7 +36,7 @@ pub enum CMAESEndConditions {
 
     /// Terminate after calling the fitness function some amount of times.
     /// Usage: MaxEvaluations(/* calls */)
-    MaxEvaluations(usize),
+    MaxEvaluations(usize)
 }
 
 #[derive(Clone)]
@@ -44,7 +44,8 @@ pub enum CMAESEndConditions {
 pub struct CMAESOptions {
     pub end_conditions: Vec<CMAESEndConditions>,
     pub dimension: usize,
-    pub threads: usize,
+    pub initial_step_size: f64,
+    pub threads: usize
 }
 
 impl CMAESOptions {
@@ -54,7 +55,8 @@ impl CMAESOptions {
         CMAESOptions {
             end_conditions: vec![DEFAULT_END_CONDITION],
             dimension: dimension,
-            threads: DEFAULT_THREADS,
+            initial_step_size: 0.3,
+            threads: DEFAULT_THREADS
         }
     }
 
@@ -63,13 +65,25 @@ impl CMAESOptions {
         CMAESOptions {
             end_conditions: Vec::new(),
             dimension: dimension,
-            threads: DEFAULT_THREADS,
+            initial_step_size: 0.3,
+            threads: DEFAULT_THREADS
         }
     }
 
     /// Sets the number of threads to use in the algorithm.
     pub fn threads(mut self, threads: usize) -> CMAESOptions {
         self.threads = threads;
+        self
+    }
+
+    /// Sets the initial step size (search radius). This is only a starting point and is adapted by
+    /// the algorithm.
+    pub fn initial_step_size(mut self, step_size: f64) -> CMAESOptions {
+        if !step_size.is_normal() {
+            panic!("Initial step size cannot be NaN or infinite");
+        }
+
+        self.initial_step_size = step_size;
         self
     }
 
