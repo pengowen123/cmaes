@@ -4,16 +4,13 @@
 An easy to use, multithreaded optimization library.
 [CMA-ES](https://en.wikipedia.org/wiki/CMA-ES) is an optimization algorithm designed for complex problems, with little knowledge of the problem. Currently compiles on Rust version 1.6.0 stable. Future versions should be okay.
 
-## Installation
+## Usage
 
 Add this to your Cargo.toml:
-
 ```
 [dependencies]
 cmaes = { git = "https://github.com/pengowen123/cmaes" }
 ```
-
-## Usage
 
 Here is a simple example:
 ```rust
