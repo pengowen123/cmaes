@@ -1,4 +1,4 @@
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Parameters {
     pub parameters: Vec<f64>,
     pub fitness: f64,

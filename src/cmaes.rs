@@ -24,12 +24,6 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Vec<f64>
     //! FitnessFunction trait and an instance of the CMAESOptions struct.
     //! Returns a solution with as small a fitness as possible.
     //!
-    //! # Examples
-    //!
-    //! ```rust
-    //! cmaes_loop(/* FitnessFunction implementor */, /* Options */)
-    //! ```
-    //!
     //! # Panics
     //!
     //! Panics if the fitness function panics or returns NaN or infinite, or if threads is 0.

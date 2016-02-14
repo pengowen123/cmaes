@@ -1,19 +1,4 @@
 //! Option types for the CMA-ES algorithm
-//!
-//! # Examples
-//!
-//! ```
-//! use cmaes::*;
-//!
-//! // A set of options with 2 variables to optimize, and a default of
-//! // 1 thread and 500 max generations.
-//! let default = CMAESOptions::default(2);
-//!
-//! // A set of options with 2 variables to optimize, 2000 max evaluations,
-//! // 1 thread, and 10 stable generations with 0.01 change in fitness.
-//! let custom = CMAESOptions::custom(2)
-//!     .max_evaluations(2000)
-//!     .stable_generations(0.01, 10);
 
 const DEFAULT_THREADS: usize = 1;
 const DEFAULT_END_CONDITION: CMAESEndConditions = CMAESEndConditions::MaxGenerations(500);
@@ -41,6 +26,21 @@ pub enum CMAESEndConditions {
 
 #[derive(Clone)]
 /// A container for end conditions, problem dimension, and thread count.
+///
+/// # Examples
+///
+/// ```
+/// use cmaes::CMAESOptions;
+///
+/// // A set of options with 2 variables to optimize, and a default of
+/// // 1 thread and 500 max generations.
+/// let default = CMAESOptions::default(2);
+///
+/// // A set of options with 2 variables to optimize, 2000 max evaluations,
+/// // 1 thread, and 10 stable generations with 0.01 change in fitness.
+/// let custom = CMAESOptions::custom(2)
+///     .max_evaluations(2000)
+///     .stable_generations(0.01, 10);
 pub struct CMAESOptions {
     pub end_conditions: Vec<CMAESEndConditions>,
     pub dimension: usize,
