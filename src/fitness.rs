@@ -4,11 +4,11 @@
 /// # Examples
 ///
 /// ```rust
-/// use cmaes::FitnessThreshold;
+/// use cmaes::FitnessFunction;
 ///
 /// struct FitnessDummy;
 ///
-/// impl FitnessThreshold for FitnessDummy {
+/// impl FitnessFunction for FitnessDummy {
 ///     fn get_fitness(parameters: &[f64]) -> f64 {
 ///         // Calculate fitness of the parameters
 ///         parameters[0] + parameters[1]
