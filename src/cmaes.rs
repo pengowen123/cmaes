@@ -24,7 +24,8 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Vec<f64>
     //! FitnessFunction trait and an instance of the CMAESOptions struct.
     //! Returns a solution with as small a fitness as possible.
     //!
-    //! Usage:
+    //! # Examples
+    //!
     //! ```rust
     //! cmaes_loop(/* FitnessFunction implementor */, /* Options */)
     //! ```
@@ -123,6 +124,8 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Vec<f64>
         let mean = Arc::new(mean_vector.clone());
 
         // Create new individuals
+        // TODO: Allow use of 0 threads (execute the inner code rather than spawning any threads)
+        // Perhaps use a let binding with a closure?
         for t in per_thread.clone() {
             let thread_mean = mean.clone();
             let thread_vectors = vectors.clone();
