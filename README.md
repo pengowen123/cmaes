@@ -42,3 +42,7 @@ fn main() {
 ```
 
 See the [documentation](http://pengowen123.github.io/cmaes/cmaes/index.html) for complete instructions.
+
+# Contributing
+
+If you encounter a bug, please open an issue explaining what happened, and include reproduction steps. If you have a suggestion for a feature, either open an issue or add it yourself and open a pull request.
