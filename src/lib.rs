@@ -12,7 +12,7 @@
 //! struct FitnessDummy;
 //!
 //! impl FitnessFunction for FitnessDummy {
-//!     fn get_fitness(parameters: &[f64]) -> f64 {
+//!     fn get_fitness(&self, parameters: &[f64]) -> f64 {
 //!         // Calculate fitness here
 //!
 //!         0.0

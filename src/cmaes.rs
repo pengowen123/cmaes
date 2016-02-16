@@ -27,7 +27,9 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Option<Vec<f64>>
     //!
     //! # Panics
     //!
-    //! Panics if the fitness function panics or returns NaN or infinite, or if threads is 0.
+    //! Panics if the fitness function panics or returns NaN or infinite, or if threads is 0. There
+    //! are some checks to make sure invalid values do not show up anywhere. If the function
+    //! returns None, please open an issue on the repository and include reproduction steps.
 
     // Take options out of the struct
     let conditions = options.end_conditions;
