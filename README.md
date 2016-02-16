@@ -2,7 +2,7 @@
 [![Build Status](https://travis-ci.org/pengowen123/cmaes.svg?branch=master)](https://travis-ci.org/pengowen123/cmaes)
 
 An easy to use, multithreaded optimization library.
-[CMA-ES](https://en.wikipedia.org/wiki/CMA-ES) is an optimization algorithm designed for non-linear, noisy, high dimension problems. Currently compiles on Rust version 1.6.0 stablebut future versions should be okay. The main function returns an Option; if you get a None value consider it a bug and please report it.
+[CMA-ES](https://en.wikipedia.org/wiki/CMA-ES) is an optimization algorithm designed for non-linear, noisy, high dimension problems. Currently compiles on Rust version 1.6.0 stable, but future versions should be okay. The main function returns an Option; if you get a None value consider it a bug and please report it.
 
 ## Usage
 
