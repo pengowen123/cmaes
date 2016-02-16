@@ -2,7 +2,7 @@
 [![Build Status](https://travis-ci.org/pengowen123/cmaes.svg?branch=master)](https://travis-ci.org/pengowen123/cmaes)
 
 An easy to use, multithreaded optimization library.
-[CMA-ES](https://en.wikipedia.org/wiki/CMA-ES) is an optimization algorithm designed for complex problems, with little knowledge of the problem. Currently compiles on Rust version 1.6.0 stable. Future versions should be okay.
+[CMA-ES](https://en.wikipedia.org/wiki/CMA-ES) is an optimization algorithm designed for non-linear, noisy, high dimension problems. Currently compiles on Rust version 1.6.0 stablebut future versions should be okay. The main function returns an Option; if you get a None value consider it a bug and please report it.
 
 ## Usage
 
@@ -37,7 +37,7 @@ fn main() {
   let options = CMAESOptions::default(2);
   
   // solution will be a vector with optimized numbers
-  let solution = cmaes_loop(FitnessDummy, options);
+  let solution = cmaes_loop(FitnessDummy, options).unwrap();
 }
 ```
 
