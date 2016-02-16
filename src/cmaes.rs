@@ -4,6 +4,7 @@ extern crate la;
 use std::usize;
 use std::thread;
 use std::sync::Arc;
+use std::cmp::Ordering;
 
 use la::{Matrix, EigenDecomposition};
 use rand::random;
@@ -17,7 +18,7 @@ use super::options::{CMAESOptions, CMAESEndConditions};
 const MIN_STEP_SIZE: f64 = 1e-290;
 const MAX_STEP_SIZE: f64 = 1e290;
 
-pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Vec<f64>
+pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Option<Vec<f64>>
     where T: FitnessFunction
 {
     //! Minimizes a function. Takes as an argument a type that implements the
@@ -32,9 +33,14 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Vec<f64>
     let conditions = options.end_conditions;
     let d = options.dimension;
     let threads = options.threads;
+    let deviations = options.initial_standard_deviations;
 
     if threads == 0 {
         panic!("Threads must be at least one");
+    }
+
+    if deviations.len() != d {
+        panic!("Length of initial deviation vector must be equal to the number of dimensions");
     }
 
     // Various numbers; mutable variables are only used as a starting point and
@@ -44,8 +50,8 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Vec<f64>
     let parents = (sample_size / 2.0).floor() as usize;
     let sample_size = sample_size as usize;
 
-    let mut generation;
-    let mut covariance_matrix: Matrix<f64> = Matrix::id(d, d);
+    let mut generation: Vec<Parameters>;
+    let mut covariance_matrix: Matrix<f64> = Matrix::diag(deviations);
     let mut eigenvectors = Matrix::id(d, d);
     let mut eigenvalues = Matrix::vector(vec![1.0; d]);
     let mut mean_vector = vec![random(); d];
@@ -156,7 +162,13 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Vec<f64>
             // User-defined function might panic
             let individuals = match handle.join() {
                 Ok(v) => v,
-                Err(..) => panic!("Panicked while calling fitness function"),
+                Err(..) => {
+                    println!("Warning: Early return due to panic");
+                    return match generation.first() {
+                        Some(i) => Some(i.parameters.clone()),
+                        None => return None
+                    }
+                }
             };
 
             for item in individuals {
@@ -167,8 +179,22 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Vec<f64>
         // Increment function evaluations counter
         g += sample_size as usize;
 
+        // Detect bad things
+        let mut bad_things = false;
+
         // Sort generation by fitness; smallest fitness will be first
-        generation.sort_by(|a, b| a.fitness.partial_cmp(&b.fitness).unwrap());
+        generation.sort_by(|a, b| match a.fitness.partial_cmp(&b.fitness) {
+            Some(v) => v,
+            None => {
+                bad_things = true;
+                Ordering::Equal
+            }
+        });
+
+        if bad_things {
+            println!("Warning: Early return due to non-normal parameter values");
+            return Some(generation[0].parameters.clone());
+        }
 
         // Update mean vector
         // New mean vector is the average of the parents
@@ -312,5 +338,5 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Vec<f64>
         best = generation[0].fitness;
     }
 
-    generation[0].parameters.to_vec()
+    Some(generation[0].parameters.to_vec())
 }

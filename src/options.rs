@@ -2,6 +2,8 @@
 
 const DEFAULT_THREADS: usize = 1;
 const DEFAULT_END_CONDITION: CMAESEndConditions = CMAESEndConditions::MaxGenerations(500);
+const DEFAULT_STEP_SIZE: f64 = 0.3;
+const DEFAULT_STANDARD_DEVIATION: f64 = 1.0;
 
 #[derive(Clone)]
 /// An enum representing a condition under which to terminate the CMA-ES algorithm.
@@ -45,6 +47,7 @@ pub struct CMAESOptions {
     pub end_conditions: Vec<CMAESEndConditions>,
     pub dimension: usize,
     pub initial_step_size: f64,
+    pub initial_standard_deviations: Vec<f64>,
     pub threads: usize
 }
 
@@ -55,7 +58,8 @@ impl CMAESOptions {
         CMAESOptions {
             end_conditions: vec![DEFAULT_END_CONDITION],
             dimension: dimension,
-            initial_step_size: 0.3,
+            initial_step_size: DEFAULT_STEP_SIZE,
+            initial_standard_deviations: vec![DEFAULT_STANDARD_DEVIATION; dimension],
             threads: DEFAULT_THREADS
         }
     }
@@ -65,7 +69,8 @@ impl CMAESOptions {
         CMAESOptions {
             end_conditions: Vec::new(),
             dimension: dimension,
-            initial_step_size: 0.3,
+            initial_step_size: DEFAULT_STEP_SIZE,
+            initial_standard_deviations: vec![DEFAULT_STANDARD_DEVIATION; dimension],
             threads: DEFAULT_THREADS
         }
     }
@@ -84,6 +89,17 @@ impl CMAESOptions {
         }
 
         self.initial_step_size = step_size;
+        self
+    }
+
+    /// Sets the initial standard deviations of each variable (individual search radii). These are
+    /// only used as starting points and are adapted by the algorithm.
+    pub fn initial_standard_deviations(mut self, deviations: Vec<f64>) -> CMAESOptions {
+        if deviations.len() != self.dimension {
+            panic!("Length of initial deviation vector must be equal to the number of dimensions");
+        }
+
+        self.initial_standard_deviations = deviations;
         self
     }
 
