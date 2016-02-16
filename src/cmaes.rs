@@ -18,8 +18,8 @@ use super::options::{CMAESOptions, CMAESEndConditions};
 const MIN_STEP_SIZE: f64 = 1e-290;
 const MAX_STEP_SIZE: f64 = 1e290;
 
-pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Option<Vec<f64>>
-    where T: FitnessFunction
+pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<Vec<f64>>
+    where T: 'static + FitnessFunction + Clone + Send + Sync
 {
     //! Minimizes a function. Takes as an argument a type that implements the
     //! FitnessFunction trait and an instance of the CMAESOptions struct.
@@ -121,6 +121,7 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Option<Vec<f64>>
     loop {
         // More thread stuff
         generation = Vec::new();
+        let object = Arc::new(object.clone());
         let vectors = Arc::new(eigenvectors.clone());
         let values = Arc::new(eigenvalues.clone());
         let mean = Arc::new(mean_vector.clone());
@@ -129,6 +130,7 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Option<Vec<f64>>
         // TODO: Allow use of 0 threads (execute the inner code rather than spawning any threads)
         // Perhaps use a let binding with a closure?
         for t in per_thread.clone() {
+            let thread_object = object.clone();
             let thread_mean = mean.clone();
             let thread_vectors = vectors.clone();
             let thread_values = values.clone();
@@ -148,7 +150,7 @@ pub fn cmaes_loop<T>(_: T, options: CMAESOptions) -> Option<Vec<f64>>
 
                     // Get fitness of parameters
                     let mut individual = Parameters::new(&parameters);
-                    individual.fitness = T::get_fitness(&parameters);
+                    individual.fitness = thread_object.get_fitness(&parameters);
 
                     // Protect from invalid values
                     if individual.fitness.is_nan() || individual.fitness.is_infinite() {
