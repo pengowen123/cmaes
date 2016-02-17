@@ -18,12 +18,13 @@ use super::options::{CMAESOptions, CMAESEndConditions};
 const MIN_STEP_SIZE: f64 = 1e-290;
 const MAX_STEP_SIZE: f64 = 1e290;
 
-pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<Vec<f64>>
+pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64)>
     where T: 'static + FitnessFunction + Clone + Send + Sync
 {
     //! Minimizes a function. Takes as an argument a type that implements the
     //! FitnessFunction trait and an instance of the CMAESOptions struct.
-    //! Returns a solution with as small a fitness as possible.
+    //! Returns a solution with as small a fitness as possible, along with the fitness value of the
+    //! solution.
     //!
     //! # Panics
     //!
@@ -169,7 +170,7 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<Vec<f64>>
                 Err(..) => {
                     println!("Warning: Early return due to panic");
                     return match generation.first() {
-                        Some(i) => Some(i.parameters.clone()),
+                        Some(i) => Some((i.parameters.clone(), i.fitness)),
                         None => return None
                     }
                 }
@@ -197,7 +198,7 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<Vec<f64>>
 
         if bad_things {
             println!("Warning: Early return due to non-normal parameter values");
-            return Some(generation[0].parameters.clone());
+            return Some((generation[0].parameters.clone(), generation[0].fitness));
         }
 
         // Update mean vector
@@ -342,5 +343,5 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<Vec<f64>>
         best = generation[0].fitness;
     }
 
-    Some(generation[0].parameters.to_vec())
+    Some((generation[0].parameters.to_vec(), best))
 }

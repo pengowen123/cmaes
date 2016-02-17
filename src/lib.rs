@@ -23,7 +23,8 @@
 //! // See the documentation for CMAESOptions for a list of all options
 //! let options = CMAESOptions::default(2);
 //!
-//! // solution will be a set of optimized parameters, with as low a fitness as possible
+//! // solution will be tuple with a set of optimized parameters, with as low a fitness as
+//! // possible, and its fitness value
 //! let solution = cmaes_loop(&FitnessDummy, options);
 //! ```
 
