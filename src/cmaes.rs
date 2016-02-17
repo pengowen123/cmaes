@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::cmp::Ordering;
 
 use la::{Matrix, EigenDecomposition};
-use rand::random;
 use rand::distributions::{Normal, IndependentSample};
 
 use super::utils::Parameters;
@@ -37,6 +36,7 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64
     let d = options.dimension;
     let threads = options.threads;
     let deviations = options.initial_standard_deviations;
+    let mean = options.initial_mean;
 
     if threads == 0 {
         panic!("Threads must be at least one");
@@ -44,6 +44,10 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64
 
     if deviations.len() != d {
         panic!("Length of initial deviation vector must be equal to the number of dimensions");
+    }
+
+    if mean.len() != d {
+        panic!("Length of initial mean vector must be equal to the number of dimensions");
     }
 
     // Various numbers; mutable variables are only used as a starting point and
@@ -57,7 +61,7 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64
     let mut covariance_matrix: Matrix<f64> = Matrix::diag(deviations);
     let mut eigenvectors = Matrix::id(d, d);
     let mut eigenvalues = Matrix::vector(vec![1.0; d]);
-    let mut mean_vector = vec![random(); d];
+    let mut mean_vector = mean;
     let mut step_size = options.initial_step_size;
     let mut path_s: Matrix<f64> = Matrix::vector(vec![0.0; d]);
     let mut path_c: Matrix<f64> = Matrix::vector(vec![0.0; d]);

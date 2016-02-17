@@ -1,5 +1,7 @@
 //! Option types for the CMA-ES algorithm
 
+use rand::random;
+
 const DEFAULT_THREADS: usize = 1;
 const DEFAULT_END_CONDITION: CMAESEndConditions = CMAESEndConditions::MaxGenerations(500);
 const DEFAULT_STEP_SIZE: f64 = 0.3;
@@ -48,6 +50,7 @@ pub struct CMAESOptions {
     pub dimension: usize,
     pub initial_step_size: f64,
     pub initial_standard_deviations: Vec<f64>,
+    pub initial_mean: Vec<f64>,
     pub threads: usize
 }
 
@@ -60,6 +63,7 @@ impl CMAESOptions {
             dimension: dimension,
             initial_step_size: DEFAULT_STEP_SIZE,
             initial_standard_deviations: vec![DEFAULT_STANDARD_DEVIATION; dimension],
+            initial_mean: vec![random(); dimension],
             threads: DEFAULT_THREADS
         }
     }
@@ -71,6 +75,7 @@ impl CMAESOptions {
             dimension: dimension,
             initial_step_size: DEFAULT_STEP_SIZE,
             initial_standard_deviations: vec![DEFAULT_STANDARD_DEVIATION; dimension],
+            initial_mean: vec![random(); dimension],
             threads: DEFAULT_THREADS
         }
     }
@@ -100,6 +105,17 @@ impl CMAESOptions {
         }
 
         self.initial_standard_deviations = deviations;
+        self
+    }
+
+    /// Sets where to start searching for solutions. This is only a starting point and is adapted
+    /// by the algorithm.
+    pub fn initial_mean(mut self, mean: Vec<f64>) -> CMAESOptions {
+        if mean.len() != self.dimension {
+            panic!("Length of initial mean vector must be equal to the number of dimensions");
+        }
+
+        self.initial_mean = mean;
         self
     }
 
