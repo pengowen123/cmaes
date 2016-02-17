@@ -7,6 +7,7 @@
 /// ```rust
 /// use cmaes::FitnessFunction;
 ///
+/// #[derive(Clone)]
 /// struct FitnessDummy;
 ///
 /// impl FitnessFunction for FitnessDummy {

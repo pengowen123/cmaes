@@ -9,6 +9,7 @@
 //! ```
 //! use cmaes::*;
 //!
+//! #[derive(Clone)]
 //! struct FitnessDummy;
 //!
 //! impl FitnessFunction for FitnessDummy {
@@ -23,7 +24,7 @@
 //! let options = CMAESOptions::default(2);
 //!
 //! // solution will be a set of optimized parameters, with as low a fitness as possible
-//! let solution = cmaes_loop(FitnessDummy, options);
+//! let solution = cmaes_loop(&FitnessDummy, options);
 //! ```
 
 extern crate la;
