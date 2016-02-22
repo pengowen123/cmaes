@@ -1,7 +1,6 @@
 extern crate rand;
 extern crate la;
 
-use std::usize;
 use std::thread;
 use std::sync::Arc;
 use std::cmp::Ordering;
@@ -13,9 +12,6 @@ use super::utils::Parameters;
 use super::fitness::FitnessFunction;
 use super::vector::*;
 use super::options::{CMAESOptions, CMAESEndConditions};
-
-const MIN_STEP_SIZE: f64 = 1e-290;
-const MAX_STEP_SIZE: f64 = 1e290;
 
 pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64)>
     where T: 'static + FitnessFunction + Clone + Send + Sync
@@ -57,10 +53,10 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64
     let parents = (sample_size / 2.0).floor() as usize;
     let sample_size = sample_size as usize;
 
-    let mut generation: Vec<Parameters>;
+    let mut generation: Vec<Parameters> = Vec::new();
     let mut covariance_matrix: Matrix<f64> = Matrix::diag(deviations);
-    let mut eigenvectors = Matrix::id(d, d);
-    let mut eigenvalues = Matrix::vector(vec![1.0; d]);
+    let mut eigenvectors: Matrix<f64> = Matrix::id(d, d);
+    let mut eigenvalues: Matrix<f64> = Matrix::vector(vec![1.0; d]);
     let mut mean_vector = mean;
     let mut step_size = options.initial_step_size;
     let mut path_s: Matrix<f64> = Matrix::vector(vec![0.0; d]);
@@ -124,6 +120,29 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64
     let mut end = false;
 
     loop {
+        // Protect against invalid values
+        if step_size.is_nan() || step_size.is_infinite() {
+            break;
+        }
+
+        let mut invalid_values = false;
+
+        for n in eigenvalues.get_data() {
+            if n.is_nan() || n.is_infinite() {
+                invalid_values = true;
+            }
+        }
+
+        for n in eigenvectors.get_data() {
+            if n.is_nan() || n.is_infinite() {
+                invalid_values = true;
+            }
+        }
+
+        if invalid_values {
+            break;
+        }
+
         // More thread stuff
         generation = Vec::new();
         let object = Arc::new(object.clone());
@@ -335,12 +354,6 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64
         }
 
         if end {
-            break;
-        }
-
-        // To prevent bad things from happening
-        if step_size <= MIN_STEP_SIZE || step_size >= MAX_STEP_SIZE || !step_size.is_normal() ||
-           g >= usize::MAX {
             break;
         }
 

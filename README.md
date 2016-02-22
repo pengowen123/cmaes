@@ -36,7 +36,7 @@ fn main() {
   // 2 is the problem dimension (number of variables to optimize)
   let options = CMAESOptions::default(2);
   
-  // solution will be a vector with optimized numbers
+  // solution will be a tuple with a vector with optimized numbers, and its fitness value
   let solution = cmaes_loop(FitnessDummy, options).unwrap();
 }
 ```
