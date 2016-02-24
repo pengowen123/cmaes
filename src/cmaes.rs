@@ -13,6 +13,8 @@ use super::fitness::FitnessFunction;
 use super::vector::*;
 use super::options::{CMAESOptions, CMAESEndConditions};
 
+const BAD_FITNESS: f64 = 10e10;
+
 pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64)>
     where T: 'static + FitnessFunction + Clone + Send + Sync
 {
@@ -145,63 +147,76 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64
 
         // More thread stuff
         generation = Vec::new();
+
         let object = Arc::new(object.clone());
         let vectors = Arc::new(eigenvectors.clone());
         let values = Arc::new(eigenvalues.clone());
         let mean = Arc::new(mean_vector.clone());
 
-        // Create new individuals
-        // TODO: Allow use of 0 threads (execute the inner code rather than spawning any threads)
-        // Perhaps use a let binding with a closure?
-        for t in per_thread.clone() {
-            let thread_object = object.clone();
-            let thread_mean = mean.clone();
-            let thread_vectors = vectors.clone();
-            let thread_values = values.clone();
+        let do_work = Arc::new(move |thread_values: Arc<Matrix<f64>>,
+                            thread_vectors: Arc<Matrix<f64>>,
+                            thread_mean: Arc<Vec<f64>>,
+                            thread_object: Arc<T>,
+                            t: usize| {
+            let mut individuals = Vec::new();
 
-            let handle = thread::spawn(move || {
-                let mut individuals = Vec::new();
+            for _ in 0..t as usize {
+                let random_values;
 
-                for _ in 0..t as usize {
-                    let random_values;
+                random_values = vec![dist.ind_sample(&mut rand::thread_rng()); d];
 
-                    random_values = vec![dist.ind_sample(&mut rand::thread_rng()); d];
+                // Sample multivariate normal
+                let parameters = mul_vec_2(&*thread_values.get_data(), &random_values);
+                let parameters = matrix_by_vector(&*thread_vectors, &parameters);
+                let parameters = add_vec(&*thread_mean, &mul_vec(&parameters, step_size));
 
-                    // Sample multivariate normal
-                    let parameters = mul_vec_2(&*thread_values.get_data(), &random_values);
-                    let parameters = matrix_by_vector(&*thread_vectors, &parameters);
-                    let parameters = add_vec(&*thread_mean, &mul_vec(&parameters, step_size));
+                // Get fitness of parameters
+                let mut individual = Parameters::new(&parameters);
+                individual.fitness = thread_object.get_fitness(&parameters);
 
-                    // Get fitness of parameters
-                    let mut individual = Parameters::new(&parameters);
-                    individual.fitness = thread_object.get_fitness(&parameters);
-
-                    // Protect from invalid values
-                    if individual.fitness.is_nan() || individual.fitness.is_infinite() {
-                        panic!("Fitness function returned NaN or infinite");
-                    }
-
-                    individuals.push(individual);
+                // Protect from invalid values
+                if individual.fitness.is_nan() || individual.fitness.is_infinite() {
+                    individual.fitness = BAD_FITNESS;
                 }
 
-                individuals
-            });
-
-            // User-defined function might panic
-            let individuals = match handle.join() {
-                Ok(v) => v,
-                Err(..) => {
-                    println!("Warning: Early return due to panic");
-                    return match generation.first() {
-                        Some(i) => Some((i.parameters.clone(), i.fitness)),
-                        None => return None
-                    }
-                }
-            };
-
-            for item in individuals {
-                generation.push(item);
+                individuals.push(individual);
             }
+
+            individuals
+        });
+
+        // Create new individuals
+        
+        if threads > 0 {
+            for t in per_thread.clone() {
+                let thread_object = object.clone();
+                let thread_mean = mean.clone();
+                let thread_vectors = vectors.clone();
+                let thread_values = values.clone();
+                let do_work = do_work.clone();
+
+                let handle = thread::spawn(move || {
+                    do_work(thread_values, thread_vectors, thread_mean, thread_object, t)
+                });
+
+                // User-defined function might panic
+                let individuals = match handle.join() {
+                    Ok(v) => v,
+                    Err(..) => {
+                        println!("Warning: Early return due to panic");
+                        return match generation.first() {
+                            Some(i) => Some((i.parameters.clone(), i.fitness)),
+                            None => return None
+                        }
+                    }
+                };
+
+                for item in individuals {
+                    generation.push(item);
+                }
+            }
+        } else {
+            generation = do_work(values, vectors, mean, object, sample_size);
         }
 
         // Increment function evaluations counter
