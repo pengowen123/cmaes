@@ -7,7 +7,7 @@ const DEFAULT_END_CONDITION: CMAESEndConditions = CMAESEndConditions::MaxGenerat
 const DEFAULT_STEP_SIZE: f64 = 0.3;
 const DEFAULT_STANDARD_DEVIATION: f64 = 1.0;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 /// An enum representing a condition under which to terminate the CMA-ES algorithm.
 pub enum CMAESEndConditions {
     // Maybe add a few more here
