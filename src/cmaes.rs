@@ -36,10 +36,6 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64
     let deviations = options.initial_standard_deviations;
     let mean = options.initial_mean;
 
-    if threads == 0 {
-        panic!("Threads must be at least one");
-    }
-
     if deviations.len() != d {
         panic!("Length of initial deviation vector must be equal to the number of dimensions");
     }
