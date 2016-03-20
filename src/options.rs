@@ -2,7 +2,7 @@
 
 use rand::random;
 
-const DEFAULT_THREADS: usize = 1;
+const DEFAULT_THREADS: usize = 0;
 const DEFAULT_END_CONDITION: CMAESEndConditions = CMAESEndConditions::MaxGenerations(500);
 const DEFAULT_STEP_SIZE: f64 = 0.3;
 const DEFAULT_STANDARD_DEVIATION: f64 = 1.0;
