@@ -34,9 +34,9 @@ extern crate rand;
 mod utils;
 mod vector;
 pub mod fitness;
-pub mod cmaes;
+pub mod cmaes_loop;
 pub mod options;
 
-pub use self::cmaes::cmaes_loop;
+pub use self::cmaes_loop::cmaes_loop;
 pub use self::fitness::FitnessFunction;
 pub use self::options::CMAESOptions;
