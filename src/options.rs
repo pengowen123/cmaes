@@ -1,180 +1,146 @@
-//! Option types for the CMA-ES algorithm
+//! Types related to initializing a [CMAESState]. See [CMAESOptions] for full documentation.
 
-use rand::random;
+use nalgebra::DVector;
 
-const DEFAULT_THREADS: usize = 0;
-const DEFAULT_END_CONDITION: CMAESEndConditions = CMAESEndConditions::MaxGenerations(500);
-const DEFAULT_STEP_SIZE: f64 = 0.3;
-const DEFAULT_STANDARD_DEVIATION: f64 = 1.0;
+use crate::CMAESState;
 
-#[derive(Clone)]
-/// An enum representing a condition under which to terminate the CMA-ES algorithm.
-pub enum CMAESEndConditions {
-    // Maybe add a few more here
-    /// Terminate if best fitness changes by less than some amount for some amount of generations.
-    /// Usage: StableGenerations(/* fitness */, /* generations */)
-    StableGenerations(f64, usize),
-
-    /// Terminate if best fitness is under some amount.
-    /// Usage: FitnessThreshold(/* fitness */)
-    FitnessThreshold(f64),
-
-    /// Terminate after the generation count reaches a number.
-    /// Usage: MaxGenerations(/* generations */)
-    MaxGenerations(usize),
-
-    /// Terminate after calling the fitness function some amount of times.
-    /// Usage: MaxEvaluations(/* calls */)
-    MaxEvaluations(usize)
-}
-
-#[derive(Clone)]
-/// A container for end conditions, problem dimension, and thread count.
+/// A builder for [`CMAESState`]. Used to adjust parameters of the algorithm to each particular
+/// problem.
 ///
 /// # Examples
 ///
 /// ```
-/// use cmaes::CMAESOptions;
-///
-/// // A set of options with 2 variables to optimize, and a default of
-/// // 1 thread and 500 max generations.
-/// let default = CMAESOptions::default(2);
-///
-/// // A set of options with 2 variables to optimize, 2000 max evaluations,
-/// // 1 thread, and 10 stable generations with 0.01 change in fitness.
-/// let custom = CMAESOptions::custom(2)
-///     .max_evaluations(2000)
-///     .stable_generations(0.01, 10);
-pub struct CMAESOptions {
-    pub end_conditions: Vec<CMAESEndConditions>,
-    pub dimension: usize,
+/// # use nalgebra::DVector;
+/// # use cmaes::CMAESOptions;
+/// let function = |x: &DVector<f64>| x.magnitude();
+/// let dim = 3;
+/// let cmaes_state = CMAESOptions::new(function, dim)
+///     .initial_mean(vec![2.0; dim])
+///     .initial_step_size(5.0)
+///     .build()
+///     .unwrap();
+/// ```
+#[derive(Clone)]
+pub struct CMAESOptions<F> {
+    /// The objective function to minimize.
+    pub function: F,
+    /// Number of dimensions to search.
+    pub dimensions: usize,
+    /// Initial mean of the search distribution. This should be set to a first guess at the
+    /// solution. Default value is the origin.
+    pub initial_mean: DVector<f64>,
+    /// Initial step size of the search distribution. This should be set to a first guess at how far
+    /// the solution is from the initial mean. Default value is `0.5`.
     pub initial_step_size: f64,
-    pub initial_standard_deviations: Vec<f64>,
-    pub initial_mean: Vec<f64>,
-    pub threads: usize
+    /// Number of points to generate each generation. Default value is `4 + 3 * floor(ln(dimensions))`.
+    ///
+    /// A larger population size will increase the robustness of the algorithm and help avoid local optima,
+    /// but will lead to a slower convergence rate. Conversely, a lower value will reduce the robustness of
+    /// the algorithm but will lead to a higher convergence rate. Generally, the population size should only
+    /// be increased from the default value. It may be useful to restart the algorithm repeatedly
+    /// with increasing population sizes.
+    pub population_size: usize,
+    /// The distribution to use when assigning weights to individuals. Default value is
+    /// `Weights::Negative`.
+    pub weights: Weights,
+    /// The value to use for the `TolFun` termination criterion (see
+    /// [`TerminationReason`][crate::TerminationReason]). Default value is `1e-10`.
+    pub tol_fun: f64,
+    /// The value to use for the `TolX` termination criterion (see
+    /// [`TerminationReason`][crate::TerminationReason]). Default value is `1e-10 *
+    /// initial_step_size`, used if this field is `None`.
+    pub tol_x: Option<f64>,
 }
 
-impl CMAESOptions {
-    /// Returns a set of default options with the specified dimension (number of variables to
-    /// optimize).
-    pub fn default(dimension: usize) -> CMAESOptions {
-        CMAESOptions {
-            end_conditions: vec![DEFAULT_END_CONDITION],
-            dimension: dimension,
-            initial_step_size: DEFAULT_STEP_SIZE,
-            initial_standard_deviations: vec![DEFAULT_STANDARD_DEVIATION; dimension],
-            initial_mean: vec![random(); dimension],
-            threads: DEFAULT_THREADS
+impl<F: Fn(&DVector<f64>) -> f64> CMAESOptions<F> {
+    /// Creates a new `CMAESOptions` with default values. Set individual options using the provided
+    /// methods.
+    pub fn new(function: F, dimensions: usize) -> Self {
+        Self {
+            function,
+            dimensions,
+            initial_mean: DVector::zeros(dimensions),
+            initial_step_size: 0.5,
+            population_size: 4 + 3 * (dimensions as f64).ln().floor() as usize,
+            weights: Weights::Negative,
+            tol_fun: 1e-10,
+            tol_x: None,
         }
     }
 
-    /// Returns a set of options with no end conditions.
-    pub fn custom(dimension: usize) -> CMAESOptions {
-        CMAESOptions {
-            end_conditions: Vec::new(),
-            dimension: dimension,
-            initial_step_size: DEFAULT_STEP_SIZE,
-            initial_standard_deviations: vec![DEFAULT_STANDARD_DEVIATION; dimension],
-            initial_mean: vec![random(); dimension],
-            threads: DEFAULT_THREADS
-        }
-    }
-
-    /// Sets the number of threads to use in the algorithm.
-    pub fn threads(mut self, threads: usize) -> CMAESOptions {
-        self.threads = threads;
+    /// Changes the initial mean from the origin.
+    pub fn initial_mean<V: Into<DVector<f64>>>(mut self, initial_mean: V) -> Self {
+        self.initial_mean = initial_mean.into();
         self
     }
 
-    /// Sets the initial step size (search radius). This is only a starting point and is adapted by
-    /// the algorithm.
-    pub fn initial_step_size(mut self, step_size: f64) -> CMAESOptions {
-        if !step_size.is_normal() {
-            panic!("Initial step size cannot be NaN or infinite");
-        }
-
-        self.initial_step_size = step_size;
+    /// Changes the initial step size from the default value.
+    pub fn initial_step_size(mut self, initial_step_size: f64) -> Self {
+        self.initial_step_size = initial_step_size;
         self
     }
 
-    /// Sets the initial standard deviations of each variable (individual search radii). These are
-    /// only used as starting points and are adapted by the algorithm.
-    pub fn initial_standard_deviations(mut self, deviations: Vec<f64>) -> CMAESOptions {
-        if deviations.len() != self.dimension {
-            panic!("Length of initial deviation vector must be equal to the number of dimensions");
-        }
-
-        self.initial_standard_deviations = deviations;
+    /// Changes the population size from the default value (must be at least 4).
+    pub fn population_size(mut self, population_size: usize) -> Self {
+        self.population_size = population_size;
         self
     }
 
-    /// Sets where to start searching for solutions. This is only a starting point and is adapted
-    /// by the algorithm.
-    pub fn initial_mean(mut self, mean: Vec<f64>) -> CMAESOptions {
-        if mean.len() != self.dimension {
-            panic!("Length of initial mean vector must be equal to the number of dimensions");
-        }
-
-        self.initial_mean = mean;
+    /// Changes the weight distribution from the default of `Weights::Negative`. See [`Weights`] for
+    /// possible distributions.
+    pub fn weights(mut self, weights: Weights) -> Self {
+        self.weights = weights;
         self
     }
 
-    /// Sets the stable generation count. The algorithm terminates if the specified number of
-    /// generations pass where the change in best fitness is under the specified amount.
-    pub fn stable_generations(mut self, fitness: f64, generations: usize) -> CMAESOptions {
-        self.add_condition(CMAESEndConditions::StableGenerations(fitness, generations));
+    /// Changes the value for the `TolFun` termination criterion from the default value (see
+    /// [`TerminationReason`][crate::TerminationReason]).
+    pub fn tol_fun(mut self, tol_fun: f64) -> Self {
+        self.tol_fun = tol_fun;
         self
     }
 
-    /// Sets the minimum fitness. The algorithm terminates if the best fitness is under the
-    /// threshold.
-    pub fn fitness_threshold(mut self, fitness: f64) -> CMAESOptions {
-        self.add_condition(CMAESEndConditions::FitnessThreshold(fitness));
+    /// Changes the value for the `TolX` termination criterion from the default value (see
+    /// [`TerminationReason`][crate::TerminationReason]).
+    pub fn tol_x(mut self, tol_x: f64) -> Self {
+        self.tol_x = Some(tol_x);
         self
     }
 
-    /// Sets the maximum generation count. The algorithm terminates after the specified number of
-    /// generations.
-    pub fn max_generations(mut self, generations: usize) -> CMAESOptions {
-        self.add_condition(CMAESEndConditions::MaxGenerations(generations));
-        self
-    }
-
-    /// Sets the maximum evaluation count. The algorithm terminates after the specified number of
-    /// fitness function calls.
-    pub fn max_evaluations(mut self, evaluations: usize) -> CMAESOptions {
-        self.add_condition(CMAESEndConditions::MaxEvaluations(evaluations));
-        self
-    }
-
-    fn add_condition(&mut self, condition: CMAESEndConditions) {
-        let mut duplicate = false;
-        let mut duplicates = Vec::new();
-
-        for (i, c) in self.end_conditions.iter().enumerate() {
-            match (c.clone(), condition.clone()) {
-                (CMAESEndConditions::StableGenerations(..),
-                 CMAESEndConditions::StableGenerations(..)) => duplicate = true,
-                (CMAESEndConditions::FitnessThreshold(..),
-                 CMAESEndConditions::FitnessThreshold(..)) => duplicate = true,
-                (CMAESEndConditions::MaxGenerations(..),
-                 CMAESEndConditions::MaxGenerations(..)) => duplicate = true,
-                (CMAESEndConditions::MaxEvaluations(..),
-                 CMAESEndConditions::MaxEvaluations(..)) => duplicate = true,
-                _ => duplicate = false,
-            }
-
-            if duplicate {
-                duplicates.push((i, condition.clone()));
-            }
-        }
-
-        for d in duplicates {
-            self.end_conditions[d.0] = d.1;
-        }
-
-        if !duplicate {
-            self.end_conditions.push(condition);
-        }
+    /// Attempts to build the [`CMAESState`] using the chosen options.
+    pub fn build(self) -> Result<CMAESState<F>, InvalidOptionsError> {
+        CMAESState::new(self)
     }
 }
+
+/// The distribution of weights for the population. The default value is `Negative`.
+#[derive(Clone)]
+pub enum Weights {
+    /// Weights are higher for higher-ranked selected individuals and are zero for the rest of the
+    /// population.
+    Positive,
+    /// Similar to `Positive`, but non-selected individuals have negative weights. With this
+    /// setting, the algorithm is known as active CMA-ES or aCMA-ES.
+    Negative,
+    /// Weights for selected individuals are equal and are zero for the rest of the population. This
+    /// setting will likely perform much worse than the others.
+    Uniform,
+}
+
+impl Default for Weights {
+    fn default() -> Self {
+        Self::Negative
+    }
+}
+
+/// Represents invalid options for CMA-ES.
+#[derive(Clone, Debug)]
+pub enum InvalidOptionsError {
+    /// The number of dimensions is set to zero.
+    ZeroDimensions,
+    /// The dimension of the initial mean does not match the chosen dimension.
+    MeanDimensionMismatch,
+    /// The population size is too small (must be at least 4).
+    SmallPopulationSize,
+}
+
