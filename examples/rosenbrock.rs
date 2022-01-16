@@ -1,6 +1,6 @@
 //! An example of using CMA-ES to minimize the Rosenbrock function.
 
-use cmaes::{CMAESOptions, Weights, TerminationReason};
+use cmaes::{CMAESOptions, Weights};
 use nalgebra::DVector;
 
 fn rosenbrock(point: &DVector<f64>) -> f64 {
@@ -20,32 +20,20 @@ fn main() {
         .build()
         .unwrap();
 
-    let mut found_solution = false;
+    let max_generations = 20000;
+    let solution = cmaes_state.run(max_generations);
 
-    loop {
-        // Iterate the algorithm until a termination criterion has been met
-        if let Some(data) = cmaes_state.next() {
-            // A good solution was found
-            if let TerminationReason::TolFun = data.reason {
-                found_solution = true;
-                println!("solution point: {}", data.best_individual);
-                println!("solution value: {}", data.best_function_value);
-            }
-
-            break;
-        }
-
-        // Stop if no solution is found after 20000 generations
-        if cmaes_state.generation() > 20000 {
-            break;
-        }
-    }
-
-    // If a solution wasn't found, get the current best point instead
-    if !found_solution {
+    if let Some(data) = solution {
+        println!(
+            "Solution found with value {} at point {}\nTermination reason: {:?}",
+            data.best_function_value, data.best_individual, data.reason,
+        );
+    } else {
         let current_best = cmaes_state.get_current_best_individual().unwrap();
 
-        println!("best solution point after 20k generations: {}", current_best.0);
-        println!("best solution value after 20k generations: {}", current_best.1);
+        println!(
+            "No solution found in {} generations, best point has value {} at point {}",
+            max_generations, current_best.1, current_best.0,
+        );
     }
 }

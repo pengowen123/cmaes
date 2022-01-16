@@ -74,13 +74,13 @@ impl<F: Fn(&DVector<f64>) -> f64> CMAESOptions<F> {
         self
     }
 
-    /// Changes the initial step size from the default value.
+    /// Changes the initial step size from the default value. Must be positive.
     pub fn initial_step_size(mut self, initial_step_size: f64) -> Self {
         self.initial_step_size = initial_step_size;
         self
     }
 
-    /// Changes the population size from the default value (must be at least 4).
+    /// Changes the population size from the default value. Must be at least 4.
     pub fn population_size(mut self, population_size: usize) -> Self {
         self.population_size = population_size;
         self
@@ -114,7 +114,7 @@ impl<F: Fn(&DVector<f64>) -> f64> CMAESOptions<F> {
 }
 
 /// The distribution of weights for the population. The default value is `Negative`.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Weights {
     /// Weights are higher for higher-ranked selected individuals and are zero for the rest of the
     /// population.
@@ -134,13 +134,14 @@ impl Default for Weights {
 }
 
 /// Represents invalid options for CMA-ES.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InvalidOptionsError {
     /// The number of dimensions is set to zero.
-    ZeroDimensions,
+    Dimensions,
     /// The dimension of the initial mean does not match the chosen dimension.
     MeanDimensionMismatch,
     /// The population size is too small (must be at least 4).
-    SmallPopulationSize,
+    PopulationSize,
+    /// The initial step size is non-positive
+    InitialStepSize,
 }
-
