@@ -15,25 +15,32 @@ fn main() {
     let dim = 2;
     let mut cmaes_state = CMAESOptions::new(rosenbrock, dim)
         .weights(Weights::Positive)
-        .tol_fun(1e-10)
-        .tol_x(1e-10)
+        .tol_fun(1e-13)
+        .tol_x(1e-13)
         .build()
         .unwrap();
 
+    // Find a solution
     let max_generations = 20000;
     let solution = cmaes_state.run(max_generations);
 
     if let Some(data) = solution {
         println!(
-            "Solution found with value {} at point {}\nTermination reason: {:?}",
-            data.best_function_value, data.best_individual, data.reason,
+            "Terminated after {} generations with termination reason `{:?}`",
+            cmaes_state.generation(),
+            data.reason,
+        );
+        println!(
+            "Best point has value {:e} and coordinates {:?}",
+            data.best_function_value,
+            data.best_individual.as_slice(),
         );
     } else {
         let current_best = cmaes_state.get_current_best_individual().unwrap();
 
         println!(
-            "No solution found in {} generations, best point has value {} at point {}",
-            max_generations, current_best.1, current_best.0,
+            "Did not terminate after {} generations\nBest point has value {:e} and coordinates {:?}",
+            cmaes_state.generation(), current_best.1, current_best.0.as_slice(),
         );
     }
 }

@@ -18,7 +18,19 @@ fn test_build() {
         .initial_step_size(-1.0)
         .build()
         .is_err());
+    assert!(CMAESOptions::new(dummy_function, 5)
+        .initial_mean(vec![1.0; 2])
+        .build()
+        .is_err());
     assert!(CMAESOptions::new(dummy_function, 0).build().is_err());
+    assert!(CMAESOptions::new(dummy_function, 0)
+        .cm(2.0)
+        .build()
+        .is_err());
+    assert!(CMAESOptions::new(dummy_function, 0)
+        .cm(-1.0)
+        .build()
+        .is_err());
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 use nalgebra::DVector;
 
-use crate::CMAESState;
+use crate::{CMAESState, ObjectiveFunction};
 
 /// A builder for [`CMAESState`]. Used to adjust parameters of the algorithm to each particular
 /// problem.
@@ -23,7 +23,7 @@ use crate::CMAESState;
 #[derive(Clone)]
 pub struct CMAESOptions<F> {
     /// The objective function to minimize.
-    pub function: F,
+    pub objective_function: F,
     /// Number of dimensions to search.
     pub dimensions: usize,
     /// Initial mean of the search distribution. This should be set to a first guess at the
@@ -43,27 +43,31 @@ pub struct CMAESOptions<F> {
     /// The distribution to use when assigning weights to individuals. Default value is
     /// `Weights::Negative`.
     pub weights: Weights,
+    /// The learning rate for adapting the mean. Can be set lower than `1.0` for noisy functions.
+    /// Default value is `1.0`.
+    pub cm: f64,
     /// The value to use for the `TolFun` termination criterion (see
-    /// [`TerminationReason`][crate::TerminationReason]). Default value is `1e-10`.
+    /// [`TerminationReason`][crate::TerminationReason]). Default value is `1e-12`.
     pub tol_fun: f64,
     /// The value to use for the `TolX` termination criterion (see
-    /// [`TerminationReason`][crate::TerminationReason]). Default value is `1e-10 *
+    /// [`TerminationReason`][crate::TerminationReason]). Default value is `1e-12 *
     /// initial_step_size`, used if this field is `None`.
     pub tol_x: Option<f64>,
 }
 
-impl<F: Fn(&DVector<f64>) -> f64> CMAESOptions<F> {
+impl<F: ObjectiveFunction> CMAESOptions<F> {
     /// Creates a new `CMAESOptions` with default values. Set individual options using the provided
     /// methods.
-    pub fn new(function: F, dimensions: usize) -> Self {
+    pub fn new(objective_function: F, dimensions: usize) -> Self {
         Self {
-            function,
+            objective_function,
             dimensions,
             initial_mean: DVector::zeros(dimensions),
             initial_step_size: 0.5,
             population_size: 4 + 3 * (dimensions as f64).ln().floor() as usize,
             weights: Weights::Negative,
-            tol_fun: 1e-10,
+            cm: 1.0,
+            tol_fun: 1e-12,
             tol_x: None,
         }
     }
@@ -86,10 +90,17 @@ impl<F: Fn(&DVector<f64>) -> f64> CMAESOptions<F> {
         self
     }
 
-    /// Changes the weight distribution from the default of `Weights::Negative`. See [`Weights`] for
+    /// Changes the weight distribution from the default value. See [`Weights`] for
     /// possible distributions.
     pub fn weights(mut self, weights: Weights) -> Self {
         self.weights = weights;
+        self
+    }
+
+    /// Changes the learning rate for the mean from the default value. Must be between `0.0` and
+    /// `1.0`.
+    pub fn cm(mut self, cm: f64) -> Self {
+        self.cm = cm;
         self
     }
 
@@ -142,6 +153,8 @@ pub enum InvalidOptionsError {
     MeanDimensionMismatch,
     /// The population size is too small (must be at least 4).
     PopulationSize,
-    /// The initial step size is non-positive
+    /// The initial step size is non-positive.
     InitialStepSize,
+    /// The learning rate is outside the valid range (`0.0` to `1.0`).
+    Cm,
 }
