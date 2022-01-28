@@ -22,14 +22,15 @@ use statrs::statistics::{Data, Median};
 
 use std::cmp::Ordering;
 use std::collections::VecDeque;
+use std::f64;
 
 use options::InvalidOptionsError;
 
 /// Data returned when the algorithm terminates.
 ///
 /// Contains the best individual and its corresponding function value as of the latest generation.
-/// Also contains the reason for termination, which can be matched on to decide whether and how to
-/// restart the algorithm.
+/// Also contains the reason for termination, which can be matched on to decide how to interpret
+/// the result and whether and how to restart the algorithm.
 #[derive(Clone, Debug)]
 pub struct TerminationData {
     pub best_individual: DVector<f64>,
@@ -45,24 +46,27 @@ pub enum TerminationReason {
     /// many consecutive generations lie below `tol_fun`.
     TolFun,
     /// The standard deviation of the distribution is smaller than `tol_x` in every coordinate and
-    /// `step_size * p_c` is smaller than `tol_x` in every coordinate. Indicates that the algorithm
-    /// has converged.
+    /// the mean has not moved much recently. Indicates that the algorithm has converged.
     TolX,
-    /// The range of best function values in many consecutive generations is approximately zero
-    /// (i.e.no improvement is occurring).
+    /// The range of best function values in many consecutive generations is zero (i.e. no
+    /// improvement is occurring).
     EqualFunValues,
     /// The best and median function values have not improved significantly over many generations.
     Stagnation,
     /// The maximum step size across all dimensions increased by a factor of more than `10^4` in a
     /// single generation. This is likely due to the function diverging or the initial step size
-    /// being set far too small, in which case a restart with a larger step size may be useful.
+    /// being set far too small. In the latter case a restart with a larger step size may be useful.
     TolXUp,
-    /// The standard deviation in any principal axis of the covariance matrix is extremely small.
+    /// The standard deviation in any principal axis in the distribution is too small to perform any
+    /// meaningful calculations.
     NoEffectAxis,
-    /// The standard deviation in any coordinate axis is extremely small.
+    /// The standard deviation in any coordinate axis in the distribution is too small to perform
+    /// any meaningful calculations.
     NoEffectCoord,
     /// The condition number of the covariance matrix exceeds `10^14` or is non-normal.
     ConditionCov,
+    /// The objective function has returned an invalid value (`NAN` or `-NAN`).
+    InvalidFunctionValue,
 }
 
 /// Stores constant parameters for the algorithm.
@@ -128,6 +132,8 @@ pub struct CMAESState<F> {
     median_function_values: VecDeque<f64>,
     /// The current best individual
     current_best_individual: Option<DVector<f64>>,
+    /// The initial max standard deviation along any principal axis of the distribution
+    initial_max_standard_deviation: f64,
 }
 
 impl<F: ObjectiveFunction> CMAESState<F> {
@@ -260,6 +266,7 @@ impl<F: ObjectiveFunction> CMAESState<F> {
             best_function_values: VecDeque::new(),
             median_function_values: VecDeque::new(),
             current_best_individual: None,
+            initial_max_standard_deviation: sigma,
         })
     }
 
@@ -306,14 +313,6 @@ impl<F: ObjectiveFunction> CMAESState<F> {
             ..
         } = self;
 
-        // Used when checking termination criteria
-        let old_max_standard_deviation = *sigma
-            * cov_sqrt_eigenvalues
-                .diagonal()
-                .iter()
-                .max_by(|a, b| partial_cmp(*a, *b))
-                .unwrap();
-
         // How many generations to store in self.best_function_values and
         // self.median_function_values
         let past_generations_to_store = ((0.2 * *generation as f64).ceil() as usize)
@@ -354,6 +353,18 @@ impl<F: ObjectiveFunction> CMAESState<F> {
         self.median_function_values.push_front(median_value);
         if self.median_function_values.len() > past_generations_to_store {
             self.median_function_values.pop_back();
+        }
+
+        // Check for invalid function values
+        if individuals.iter().any(|(_, x)| x.is_nan()) {
+            let (best_individual, best_function_value) =
+                self.get_current_best_individual().unwrap();
+
+            return Some(TerminationData {
+                best_individual: best_individual.clone(),
+                best_function_value,
+                reason: TerminationReason::InvalidFunctionValue,
+            });
         }
 
         // Calculate new mean through weighted recombination
@@ -425,11 +436,8 @@ impl<F: ObjectiveFunction> CMAESState<F> {
         *generation += 1;
 
         // Terminate with the current best individual if any termination criterion is met
-        let termination_reason = self.check_termination_criteria(
-            &individuals,
-            past_generations_to_store,
-            old_max_standard_deviation,
-        );
+        let termination_reason =
+            self.check_termination_criteria(&individuals, past_generations_to_store);
         if let Some(reason) = termination_reason {
             let (best_individual, best_function_value) =
                 self.get_current_best_individual().unwrap();
@@ -449,7 +457,6 @@ impl<F: ObjectiveFunction> CMAESState<F> {
         &self,
         individuals: &[(DVector<f64>, f64)],
         past_generations_to_store: usize,
-        old_max_standard_deviation: f64,
     ) -> Option<TerminationReason> {
         let Parameters {
             dim,
@@ -461,16 +468,15 @@ impl<F: ObjectiveFunction> CMAESState<F> {
 
         let Self {
             ref generation,
+            ref mean,
             ref cov,
             ref cov_eigenvectors,
             ref cov_sqrt_eigenvalues,
             ref sigma,
             ref path_c,
+            ref initial_max_standard_deviation,
             ..
         } = self;
-
-        // See TerminationReason for what properties these are checking
-        const EPSILON: f64 = 1e-16;
 
         // Check TerminationReason::TolFun
         let past_generations_a = 10 + (30.0 * dim as f64 / lambda as f64).ceil() as usize;
@@ -500,7 +506,7 @@ impl<F: ObjectiveFunction> CMAESState<F> {
         }
 
         // Check TerminationReason::TolX
-        if (0..dim).all(|i| *sigma * cov[(i, i)].abs() < tol_x)
+        if (0..dim).all(|i| (*sigma * cov[(i, i)]).abs() < tol_x)
             && path_c.iter().all(|x| (*sigma * *x).abs() < tol_x)
         {
             return Some(TerminationReason::TolX);
@@ -533,18 +539,18 @@ impl<F: ObjectiveFunction> CMAESState<F> {
             * cov_sqrt_eigenvalues[(index_to_check, index_to_check)]
             * cov_eigenvectors.column(index_to_check);
 
-        if no_effect_axis_check.magnitude() < EPSILON {
+        if mean == &(mean + no_effect_axis_check) {
             return Some(TerminationReason::NoEffectAxis);
         }
 
         // Check TerminationReason::NoEffectCoord
-        if (0..dim).any(|i| 0.2 * *sigma * cov[(i, i)].abs() < EPSILON) {
+        if (0..dim).any(|i| mean[i] == mean[i] + 0.2 * *sigma * cov[(i, i)]) {
             return Some(TerminationReason::NoEffectCoord);
         }
 
         // Check TerminationReason::EqualFunValues
         if let Some(range) = range_past_generations_a {
-            if range < EPSILON {
+            if range == 0.0 {
                 return Some(TerminationReason::EqualFunValues);
             }
         }
@@ -579,7 +585,7 @@ impl<F: ObjectiveFunction> CMAESState<F> {
                     .cloned()
                     .collect::<Vec<_>>();
 
-                Data::new(first_values).median() <= Data::new(last_values).median() - EPSILON
+                Data::new(first_values).median() < Data::new(last_values).median()
             };
 
             if !did_values_improve(&self.best_function_values)
@@ -590,14 +596,14 @@ impl<F: ObjectiveFunction> CMAESState<F> {
         }
 
         // Check TerminationReason::TolXUp
-        let new_max_standard_deviation = *sigma
+        let max_standard_deviation = *sigma
             * cov_sqrt_eigenvalues
                 .diagonal()
                 .iter()
                 .max_by(|a, b| partial_cmp(*a, *b))
                 .unwrap();
 
-        if (new_max_standard_deviation / old_max_standard_deviation) > 1e4 {
+        if max_standard_deviation / initial_max_standard_deviation > 1e4 {
             return Some(TerminationReason::TolXUp);
         }
 
@@ -721,27 +727,23 @@ mod tests {
         let dim = 2;
         let cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
         assert_eq!(
-            cmaes_state.check_termination_criteria(
-                &vec![(DVector::zeros(dim), 0.0); 100],
-                100,
-                0.5,
-            ),
+            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             None,
         );
 
-        // A large standard deviation in one axis should not meet any termination criteria on its
-        // own
-        let mut cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
-        cmaes_state.cov = DMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e5]);
+        // A large standard deviation in one axis should not meet any termination criteria if the
+        // initial step size was also large
+        let mut cmaes_state = CMAESOptions::new(dummy_function, dim)
+            .initial_step_size(1e3)
+            .build()
+            .unwrap();
+        cmaes_state.sigma = 1e4;
+        cmaes_state.cov = DMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e4]);
         let eigen = decompose_cov(cmaes_state.cov.clone());
         cmaes_state.cov_eigenvectors = eigen.eigenvectors;
         cmaes_state.cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
         assert_eq!(
-            cmaes_state.check_termination_criteria(
-                &vec![(DVector::zeros(dim), 0.0); 100],
-                100,
-                50000.0,
-            ),
+            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             None,
         );
     }
@@ -755,11 +757,7 @@ mod tests {
         cmaes_state.best_function_values.extend(vec![1.0; 100]);
         cmaes_state.best_function_values.push_front(1.0 + 1e-13);
         assert_eq!(
-            cmaes_state.check_termination_criteria(
-                &vec![(DVector::zeros(dim), 0.0); 100],
-                100,
-                0.5,
-            ),
+            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             Some(TerminationReason::TolFun),
         );
     }
@@ -771,35 +769,29 @@ mod tests {
         let mut cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
         cmaes_state.sigma = 1e-13;
         assert_eq!(
-            cmaes_state.check_termination_criteria(
-                &vec![(DVector::zeros(dim), 0.0); 100],
-                100,
-                0.5,
-            ),
+            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             Some(TerminationReason::TolX),
         );
     }
 
     #[test]
     fn test_check_termination_criteria_equal_fun_values() {
-        // A small range of historical values produces EqualFunValues
+        // A zero range of historical values produces EqualFunValues
         let dim = 2;
         let mut cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
         cmaes_state.best_function_values.extend(vec![1.0; 100]);
+        // Equal to 1.0 due to lack of precision
+        cmaes_state.best_function_values.push_front(1.0 + 1e-17);
         assert_eq!(
-            cmaes_state.check_termination_criteria(
-                &vec![(DVector::zeros(dim), 1.0); 100],
-                100,
-                0.5,
-            ),
+            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 1.0); 100], 100),
             Some(TerminationReason::EqualFunValues),
         );
     }
 
     #[test]
     fn test_check_termination_criteria_stagnation() {
-        // Median/best function values that change but hover around the same point for many
-        // generations produces Stagnation
+        // Median/best function values that change but don't improve for many generations produces
+        // Stagnation
         let dim = 2;
         let mut cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
         let mut values = Vec::new();
@@ -810,8 +802,7 @@ mod tests {
         cmaes_state.best_function_values.extend(values.clone());
         cmaes_state.median_function_values.extend(values.clone());
         assert_eq!(
-            cmaes_state
-                .check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 80, 0.5,),
+            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 80),
             Some(TerminationReason::Stagnation),
         );
     }
@@ -821,34 +812,27 @@ mod tests {
         // A large increase in maximum standard deviation produces TolXUp
         let dim = 2;
         let mut cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
-        let old_max_standard_deviation = 0.1;
-        cmaes_state.sigma = 1e5;
+        cmaes_state.sigma = 1e6;
         assert_eq!(
-            cmaes_state.check_termination_criteria(
-                &vec![(DVector::zeros(dim), 0.0); 100],
-                100,
-                old_max_standard_deviation,
-            ),
+            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             Some(TerminationReason::TolXUp),
         );
     }
 
     #[test]
     fn test_check_termination_criteria_no_effect_axis() {
-        // A small standard deviation (eigenvalue) in a principal axis of the covariance matrix
-        // (eigenvector) produces NoEffectAxis
-        // This may overlap with TolX but only if path_c also small (i.e., if convergence has
-        // occurred)
+        // A lack of available precision along a principal axis in the distribution produces
+        // NoEffectAxis
         let dim = 2;
         let mut cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
         let eigenvectors = [
             DVector::from(vec![3.0, 2.0]).normalize(),
             DVector::from(vec![-2.0, 3.0]).normalize(),
         ];
+        cmaes_state.mean = vec![100.0; 2].into();
         cmaes_state.sigma = 1e-10;
-        cmaes_state.path_c = DVector::from(vec![1.0; dim]);
         cmaes_state.cov_eigenvectors = DMatrix::from_columns(&eigenvectors);
-        cmaes_state.cov_sqrt_eigenvalues = DMatrix::from_diagonal(&vec![1e-2, 1e-6].into());
+        cmaes_state.cov_sqrt_eigenvalues = DMatrix::from_diagonal(&vec![1e-1, 1e-6].into());
         cmaes_state.cov = &cmaes_state.cov_eigenvectors
             * &cmaes_state.cov_sqrt_eigenvalues.pow(2)
             * &cmaes_state.cov_eigenvectors.transpose();
@@ -856,11 +840,8 @@ mod tests {
         let mut terminated = false;
         for g in 0..dim {
             cmaes_state.generation = g;
-            let termination_reason = cmaes_state.check_termination_criteria(
-                &vec![(DVector::zeros(dim), 0.0); 100],
-                100,
-                0.5,
-            );
+            let termination_reason =
+                cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100);
             if let Some(reason) = termination_reason {
                 assert_eq!(reason, TerminationReason::NoEffectAxis);
                 terminated = true;
@@ -871,13 +852,11 @@ mod tests {
 
     #[test]
     fn test_check_termination_criteria_no_effect_coord() {
-        // A small standard deviation in a coordinate axis produces NoEffectCoord (only if
-        // NoEffectCoord is not met)
-        // This may overlap with TolX but only if path_c also small (i.e., if convergence has
-        // occurred)
+        // A lack of available precision along a coordinate axis in the distribution produces
+        // NoEffectCoord
         let dim = 2;
         let mut cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
-        cmaes_state.path_c = DVector::from(vec![1.0; dim]);
+        cmaes_state.mean = vec![100.0; 2].into();
         cmaes_state.cov_eigenvectors = DMatrix::identity(2, 2);
         cmaes_state.cov_sqrt_eigenvalues = DMatrix::from_diagonal(&vec![1e-4, 1e-10].into());
         cmaes_state.cov = &cmaes_state.cov_eigenvectors
@@ -887,11 +866,8 @@ mod tests {
         let mut terminated = false;
         for g in 0..dim {
             cmaes_state.generation = g;
-            let termination_reason = cmaes_state.check_termination_criteria(
-                &vec![(DVector::zeros(dim), 0.0); 100],
-                100,
-                0.5,
-            );
+            let termination_reason =
+                cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100);
             if let Some(reason) = termination_reason {
                 assert_eq!(reason, TerminationReason::NoEffectCoord);
                 terminated = true;
@@ -902,7 +878,7 @@ mod tests {
 
     #[test]
     fn test_check_termination_criteria_condition_cov() {
-        // A large difference between the maximum and minimum standard deviations producesc
+        // A large difference between the maximum and minimum standard deviations produces
         // ConditionCov
         let dim = 2;
         let mut cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
@@ -911,11 +887,7 @@ mod tests {
         cmaes_state.cov_eigenvectors = eigen.eigenvectors;
         cmaes_state.cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
         assert_eq!(
-            cmaes_state.check_termination_criteria(
-                &vec![(DVector::zeros(dim), 0.0); 100],
-                100,
-                0.5,
-            ),
+            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             Some(TerminationReason::ConditionCov),
         );
     }
