@@ -40,7 +40,7 @@ pub struct TerminationData {
 
 /// Represents the reason for the algorithm terminating. Most of these are for preventing numerical
 /// instability, while `TolFun` and `TolX` are problem-dependent parameters.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TerminationReason {
     /// All function values of the latest generation and the range of the best function values of
     /// many consecutive generations lie below `tol_fun`.
@@ -53,9 +53,9 @@ pub enum TerminationReason {
     EqualFunValues,
     /// The best and median function values have not improved significantly over many generations.
     Stagnation,
-    /// The maximum step size across all dimensions increased by a factor of more than `10^4` in a
-    /// single generation. This is likely due to the function diverging or the initial step size
-    /// being set far too small. In the latter case a restart with a larger step size may be useful.
+    /// The maximum standard deviation across all dimensions increased by a factor of more than
+    /// `10^8`. This is likely due to the function diverging or the initial step size being set far
+    /// too small. In the latter case a restart with a larger step size may be useful.
     TolXUp,
     /// The standard deviation in any principal axis in the distribution is too small to perform any
     /// meaningful calculations.
@@ -67,6 +67,10 @@ pub enum TerminationReason {
     ConditionCov,
     /// The objective function has returned an invalid value (`NAN` or `-NAN`).
     InvalidFunctionValue,
+    /// The covariance matrix is not positive definite. This probably indicates a bug in the
+    /// library and can be reported [here](https://github.com/pengowen123/cmaes/issues/). Using
+    /// `Weights::Positive` should prevent this entirely in the meantime.
+    PosDefCov,
 }
 
 /// Stores constant parameters for the algorithm.
@@ -174,11 +178,11 @@ impl<F: ObjectiveFunction> CMAESState<F> {
             Weights::Uniform => vec![1.0; mu],
             // weights.len() == mu
             Weights::Positive => (1..=mu)
-                .map(|i| (mu as f64 + 0.5).log10() - (i as f64).log10())
+                .map(|i| (mu as f64 + 0.5).ln() - (i as f64).ln())
                 .collect::<Vec<_>>(),
             // weights.len() == lambda
             Weights::Negative => (1..=lambda)
-                .map(|i| (mu as f64 + 0.5).log10() - (i as f64).log10())
+                .map(|i| (mu as f64 + 0.5).ln() - (i as f64).ln())
                 .collect::<Vec<_>>(),
         }
         .into();
@@ -245,7 +249,7 @@ impl<F: ObjectiveFunction> CMAESState<F> {
         // Initialize variable parameters
         let mean = options.initial_mean;
         let cov = DMatrix::identity(options.dimensions, options.dimensions);
-        let eigen = decompose_cov(cov.clone());
+        let eigen = decompose_cov(cov.clone()).unwrap();
         let cov_eigenvectors = eigen.eigenvectors;
         let cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
         let sigma = options.initial_step_size;
@@ -357,17 +361,11 @@ impl<F: ObjectiveFunction> CMAESState<F> {
 
         // Check for invalid function values
         if individuals.iter().any(|(_, x)| x.is_nan()) {
-            let (best_individual, best_function_value) =
-                self.get_current_best_individual().unwrap();
-
-            return Some(TerminationData {
-                best_individual: best_individual.clone(),
-                best_function_value,
-                reason: TerminationReason::InvalidFunctionValue,
-            });
+            return Some(self.get_termination_data(TerminationReason::InvalidFunctionValue));
         }
 
         // Calculate new mean through weighted recombination
+        // Only the mu best individuals are used even if there are lambda weights
         let yw = individuals
             .iter()
             .take(mu)
@@ -407,8 +405,8 @@ impl<F: ObjectiveFunction> CMAESState<F> {
             .iter()
             .enumerate()
             .map(|(i, w)| {
-                if *w >= 0.0 {
-                    *w
+                *w * if *w >= 0.0 {
+                    1.0
                 } else {
                     dim as f64 / (&sqrt_inv_c * &y[i]).magnitude().powi(2)
                 }
@@ -425,12 +423,19 @@ impl<F: ObjectiveFunction> CMAESState<F> {
                     .map(|(i, wc)| wc * &y[i] * y[i].transpose())
                     .sum::<DMatrix<f64>>();
 
+        // Ensure symmetry
+        cov.fill_lower_triangle_with_upper_triangle();
+
         // Update eigendecomposition occasionally (updating every generation is unnecessary and
         // inefficient for high dim)
         if *generation % 1.max((1.0 / (10.0 * dim as f64 * (c1 + cmu))).floor() as usize) == 0 {
-            let eigen = decompose_cov(cov.clone());
-            *cov_eigenvectors = eigen.eigenvectors;
-            *cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
+            match decompose_cov(cov.clone()) {
+                Some(eigen) => {
+                    *cov_eigenvectors = eigen.eigenvectors;
+                    *cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
+                }
+                None => return Some(self.get_termination_data(TerminationReason::PosDefCov)),
+            };
         }
 
         *generation += 1;
@@ -439,17 +444,10 @@ impl<F: ObjectiveFunction> CMAESState<F> {
         let termination_reason =
             self.check_termination_criteria(&individuals, past_generations_to_store);
         if let Some(reason) = termination_reason {
-            let (best_individual, best_function_value) =
-                self.get_current_best_individual().unwrap();
-
-            return Some(TerminationData {
-                best_individual: best_individual.clone(),
-                best_function_value,
-                reason,
-            });
+            Some(self.get_termination_data(reason))
+        } else {
+            None
         }
-
-        None
     }
 
     /// Returns `Some` if any termination criterion is met.
@@ -603,7 +601,7 @@ impl<F: ObjectiveFunction> CMAESState<F> {
                 .max_by(|a, b| partial_cmp(*a, *b))
                 .unwrap();
 
-        if max_standard_deviation / initial_max_standard_deviation > 1e4 {
+        if max_standard_deviation / initial_max_standard_deviation > 1e8 {
             return Some(TerminationReason::TolXUp);
         }
 
@@ -622,11 +620,22 @@ impl<F: ObjectiveFunction> CMAESState<F> {
             .front()
             .map(|x| (self.current_best_individual.as_ref().unwrap(), *x))
     }
+
+    /// Returns a `TerminationData` with the current best individual/value and the given reason.
+    fn get_termination_data(&self, reason: TerminationReason) -> TerminationData {
+        let (best_individual, best_function_value) = self.get_current_best_individual().unwrap();
+
+        return TerminationData {
+            best_individual: best_individual.clone(),
+            best_function_value,
+            reason,
+        };
+    }
 }
 
 /// Used for finding max/min values
 fn partial_cmp(a: &f64, b: &f64) -> Ordering {
-    a.partial_cmp(b).unwrap_or(Ordering::Equal)
+    a.partial_cmp(b).unwrap_or(Ordering::Less)
 }
 
 /// Decomposition of a covariance matrix
@@ -639,16 +648,20 @@ struct CovDecomposition {
 
 /// Decomposes a covariance matrix into a set of normalized eigenvectors and a diagonal matrix
 /// containing the square roots of the corresponding eigenvalues
-fn decompose_cov(matrix: DMatrix<f64>) -> CovDecomposition {
+fn decompose_cov(matrix: DMatrix<f64>) -> Option<CovDecomposition> {
     let mut eigen = matrix.symmetric_eigen();
 
     for mut col in eigen.eigenvectors.column_iter_mut() {
         col.normalize_mut();
     }
 
-    CovDecomposition {
-        eigenvectors: eigen.eigenvectors,
-        sqrt_eigenvalues: DMatrix::from_diagonal(&eigen.eigenvalues.map(|x| x.sqrt())),
+    if eigen.eigenvalues.iter().any(|x| *x <= 0.0) {
+        None
+    } else {
+        Some(CovDecomposition {
+            eigenvectors: eigen.eigenvectors,
+            sqrt_eigenvalues: DMatrix::from_diagonal(&eigen.eigenvalues.map(|x| x.sqrt())),
+        })
     }
 }
 
@@ -668,7 +681,7 @@ mod tests {
     fn test_decompose_cov() {
         let matrix = DMatrix::from_iterator(2, 2, [3.0, 1.5, 1.5, 2.0]);
 
-        let eigen = decompose_cov(matrix.clone());
+        let eigen = decompose_cov(matrix.clone()).unwrap();
 
         let reconstructed = eigen.eigenvectors.clone()
             * eigen.sqrt_eigenvalues.pow(2)
@@ -691,7 +704,11 @@ mod tests {
                 .unwrap();
 
             assert!(cmaes_state.parameters.weights.iter().all(|w| *w > 0.0));
-            assert_approx_eq!(cmaes_state.parameters.weights.iter().sum::<f64>(), 1.0);
+            assert_approx_eq!(
+                cmaes_state.parameters.weights.iter().sum::<f64>(),
+                1.0,
+                1e-12
+            );
         }
     }
 
@@ -712,6 +729,17 @@ mod tests {
                 .iter()
                 .take(cmaes_state.parameters.mu)
                 .all(|w| *w > 0.0));
+
+            assert_approx_eq!(
+                cmaes_state
+                    .parameters
+                    .weights
+                    .iter()
+                    .take(cmaes_state.parameters.mu)
+                    .sum::<f64>(),
+                1.0,
+                1e-12
+            );
 
             assert!(cmaes_state
                 .parameters
@@ -739,7 +767,7 @@ mod tests {
             .unwrap();
         cmaes_state.sigma = 1e4;
         cmaes_state.cov = DMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e4]);
-        let eigen = decompose_cov(cmaes_state.cov.clone());
+        let eigen = decompose_cov(cmaes_state.cov.clone()).unwrap();
         cmaes_state.cov_eigenvectors = eigen.eigenvectors;
         cmaes_state.cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
         assert_eq!(
@@ -812,7 +840,7 @@ mod tests {
         // A large increase in maximum standard deviation produces TolXUp
         let dim = 2;
         let mut cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
-        cmaes_state.sigma = 1e6;
+        cmaes_state.sigma = 1e8;
         assert_eq!(
             cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             Some(TerminationReason::TolXUp),
@@ -883,7 +911,7 @@ mod tests {
         let dim = 2;
         let mut cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
         cmaes_state.cov = DMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e15]);
-        let eigen = decompose_cov(cmaes_state.cov.clone());
+        let eigen = decompose_cov(cmaes_state.cov.clone()).unwrap();
         cmaes_state.cov_eigenvectors = eigen.eigenvectors;
         cmaes_state.cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
         assert_eq!(

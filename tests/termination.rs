@@ -54,7 +54,7 @@ fn test_tol_x() {
 #[test]
 fn test_equal_fun_values() {
     // The function bottoms out before convergence
-    let function = |x: &DVector<f64>| x.magnitude().max(1e-8);
+    let function = |x: &DVector<f64>| x.magnitude().max(1e-6);
     run_test(
         CMAESOptions::new(function, 2).initial_mean(vec![5.0; 2]),
         |r| matches!(r, TerminationReason::EqualFunValues),
@@ -65,7 +65,7 @@ fn test_equal_fun_values() {
 #[test]
 fn test_stagnation() {
     // The function is noisy, so it will continue changing despite never improving overall
-    let function = |x: &DVector<f64>| 1.0 + x.magnitude().powi(2) + rand::random::<f64>() * 1e-8;
+    let function = |x: &DVector<f64>| 1.0 + x.magnitude().powi(2) + rand::random::<f64>() * 1e-2;
     run_test(
         CMAESOptions::new(function, 2).initial_mean(vec![5.0; 2]),
         |r| matches!(r, TerminationReason::Stagnation),
@@ -76,7 +76,7 @@ fn test_stagnation() {
 #[test]
 fn test_tol_x_up() {
     // The initial step size is far too small
-    let function = |x: &DVector<f64>| (x[0].powi(2) + x[1].powi(2));
+    let function = |x: &DVector<f64>| x[0].powi(2) + x[1].powi(2);
     run_test(
         CMAESOptions::new(function, 2)
             .initial_mean(vec![1e3; 2])
@@ -90,9 +90,17 @@ fn run_test_no_effect<F: Fn(TerminationReason) -> bool + Clone>(check_reason: F)
     // Neither `tol_fun` nor `tol_x` can be reached
     // Modified Rosenbrock function
     let function = |x: &DVector<f64>| {
-        1.0 + ((1.0 - x[0]).powi(2) + 25.0 * (x[1] - x[0].powi(2)).powi(2)).powf(0.5)
+        1e-8 + (1.0 - x[0].powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2))
+            .abs()
+            .sqrt()
     };
-    run_test(CMAESOptions::new(function, 2).tol_x(1e-16), check_reason, 0);
+    run_test(
+        CMAESOptions::new(function, 2)
+            .tol_x(1e-16)
+            .population_size(16),
+        check_reason,
+        1,
+    );
 }
 
 #[test]
@@ -108,24 +116,23 @@ fn test_no_effect() {
 #[test]
 #[should_panic(expected = "NoEffectCoord")]
 fn test_no_effect_axis() {
-    run_test_no_effect(|r| matches!(r, TerminationReason::NoEffectAxis,));
+    run_test_no_effect(|r| matches!(r, TerminationReason::NoEffectAxis));
 }
 
 #[test]
 #[should_panic(expected = "NoEffectAxis")]
 fn test_no_effect_coord() {
-    run_test_no_effect(|r| matches!(r, TerminationReason::NoEffectCoord,));
+    run_test_no_effect(|r| matches!(r, TerminationReason::NoEffectCoord));
 }
 
 #[test]
 fn test_condition_cov() {
-    // The function endlessly decreases in one axis while converging in another, causing the
-    // distribution to become extremely thin and long
-    let function = |x: &DVector<f64>| x[0].abs() - (x[1] * 1e-12).abs().powf(0.1);
+    // The function diverges in one axis while converging in another, causing the distribution to
+    // become extremely thin and long
+    let function = |x: &DVector<f64>| 0.1 + x[0].abs().powi(2) - (x[1] * 1e-14).abs().sqrt();
     run_test(
         CMAESOptions::new(function, 2)
             .initial_step_size(1e3)
-            .tol_fun(-1.0)
             .tol_x(1e-12),
         |r| matches!(r, TerminationReason::ConditionCov),
         1,
