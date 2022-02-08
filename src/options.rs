@@ -22,15 +22,16 @@ use crate::{CMAESState, ObjectiveFunction};
 /// ```
 #[derive(Clone)]
 pub struct CMAESOptions {
-    /// Number of dimensions to search.
+    /// Number of dimensions to search (`N`).
     pub dimensions: usize,
     /// Initial mean of the search distribution. This should be set to a first guess at the
     /// solution. Default value is the origin.
     pub initial_mean: DVector<f64>,
-    /// Initial step size of the search distribution. This should be set to a first guess at how far
-    /// the solution is from the initial mean. Default value is `0.5`.
+    /// Initial step size of the search distribution (`sigma0`). This should be set to a first guess
+    /// at how far the solution is from the initial mean. Default value is `0.5`.
     pub initial_step_size: f64,
-    /// Number of points to generate each generation. Default value is `4 + floor(3 * ln(dimensions))`.
+    /// Number of points to generate each generation (`lambda`). Default value is
+    /// `4 + floor(3 * ln(dimensions))`.
     ///
     /// A larger population size will increase the robustness of the algorithm and help avoid local optima,
     /// but will lead to a slower convergence rate. Conversely, a lower value will reduce the robustness of
@@ -44,12 +45,11 @@ pub struct CMAESOptions {
     /// The learning rate for adapting the mean. Can be set lower than `1.0` for noisy functions.
     /// Default value is `1.0`.
     pub cm: f64,
-    /// The value to use for the `TolFun` termination criterion (see
-    /// [`TerminationReason`][crate::TerminationReason]). Default value is `1e-12`.
+    /// The value to use for the [`TerminationReason::TolFun`] termination criterion. Default value
+    /// is `1e-12`.
     pub tol_fun: f64,
-    /// The value to use for the `TolX` termination criterion (see
-    /// [`TerminationReason`][crate::TerminationReason]). Default value is `1e-12 *
-    /// initial_step_size`, used if this field is `None`.
+    /// The value to use for the [`TerminationReason::TolX`] termination criterion. Default value is
+    /// `1e-12 * initial_step_size`, used if this field is `None`.
     pub tol_x: Option<f64>,
 }
 

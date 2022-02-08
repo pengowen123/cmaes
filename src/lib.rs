@@ -74,22 +74,24 @@ pub enum TerminationReason {
     /// The objective function has returned an invalid value (`NAN` or `-NAN`).
     InvalidFunctionValue,
     /// The covariance matrix is not positive definite. If this is returned frequently, it probably
-    /// indicates a bug in the library and can be reported [here][0]. Using `Weights::Positive`
+    /// indicates a bug in the library and can be reported [here][0]. Using [`Weights::Positive`]
     /// should prevent this entirely in the meantime.
     ///
     /// [0]: https://github.com/pengowen123/cmaes/issues/
     PosDefCov,
 }
 
-/// Stores constant parameters for the algorithm.
+/// Stores constant parameters for the algorithm. Obtained by calling [`CMAESState::parameters`].
 #[derive(Clone, Debug)]
-struct Parameters {
+pub struct Parameters {
     /// Number of dimensions to search
     dim: usize,
     /// Population size,
     lambda: usize,
     /// Number of individuals to select each generation
     mu: usize,
+    /// Initial value for sigma
+    initial_sigma: f64,
     /// Variance-effective selection mass
     mu_eff: f64,
     /// Individual weights
@@ -110,6 +112,78 @@ struct Parameters {
     tol_fun: f64,
     /// Value for the TolX termination criterion
     tol_x: f64,
+}
+
+impl Parameters {
+    /// Returns the problem dimension `N`.
+    pub fn dim(&self) -> usize {
+        self.dim
+    }
+
+    /// Returns the population size `lambda`.
+    pub fn lambda(&self) -> usize {
+        self.lambda
+    }
+
+    /// Returns the selected population size `mu`.
+    pub fn mu(&self) -> usize {
+        self.mu
+    }
+
+    /// Returns the initial step size `sigma0`.
+    pub fn initial_sigma(&self) -> f64 {
+        self.initial_sigma
+    }
+
+    /// Returns the variance-effective selection mass `mu_eff`.
+    pub fn mu_eff(&self) -> f64 {
+        self.mu_eff
+    }
+
+    /// Returns the weights `w`.
+    pub fn weights(&self) -> &DVector<f64> {
+        &self.weights
+    }
+
+    /// Returns the learning rate for rank-one update cumulation `cc`.
+    pub fn cc(&self) -> f64 {
+        self.cc
+    }
+
+    /// Returns the learning rate for the rank-one update `c1`.
+    pub fn c1(&self) -> f64 {
+        self.c1
+    }
+
+    /// Returns the learning rate for the step size update `cs`.
+    pub fn cs(&self) -> f64 {
+        self.cs
+    }
+
+    /// Returns the learning rate for the rank-mu update `cmu`.
+    pub fn cmu(&self) -> f64 {
+        self.cmu
+    }
+
+    /// Returns the learning rate for the mean update `cm`.
+    pub fn cm(&self) -> f64 {
+        self.cm
+    }
+
+    /// Returns the damping factor for the step size update `damp_s`.
+    pub fn damp_s(&self) -> f64 {
+        self.damp_s
+    }
+
+    /// Returns the value for the [`TerminationReason::TolFun`] termination criterion.
+    pub fn tol_fun(&self) -> f64 {
+        self.tol_fun
+    }
+
+    /// Returns the value for the [`TerminationReason::TolX`] termination criterion.
+    pub fn tol_x(&self) -> f64 {
+        self.tol_x
+    }
 }
 
 /// Stores the iteration state of and runs the algorithm. Use [`CMAESOptions`] to create a
@@ -146,8 +220,6 @@ pub struct CMAESState {
     median_function_values: VecDeque<f64>,
     /// The current best individual
     current_best_individual: Option<DVector<f64>>,
-    /// The initial max standard deviation along any principal axis of the distribution
-    initial_max_standard_deviation: f64,
     /// The last time the eigendecomposition was updated, in function evals
     last_eigen_update_evals: usize,
 }
@@ -246,6 +318,7 @@ impl CMAESState {
             dim,
             lambda,
             mu,
+            initial_sigma: options.initial_step_size,
             mu_eff,
             weights,
             cc,
@@ -283,7 +356,6 @@ impl CMAESState {
             best_function_values: VecDeque::new(),
             median_function_values: VecDeque::new(),
             current_best_individual: None,
-            initial_max_standard_deviation: sigma,
             last_eigen_update_evals: 0,
         })
     }
@@ -493,6 +565,7 @@ impl CMAESState {
         let Parameters {
             dim,
             lambda,
+            initial_sigma,
             tol_fun,
             tol_x,
             ..
@@ -506,7 +579,6 @@ impl CMAESState {
             ref cov_sqrt_eigenvalues,
             ref sigma,
             ref path_c,
-            ref initial_max_standard_deviation,
             ..
         } = self;
 
@@ -635,16 +707,41 @@ impl CMAESState {
                 .max_by(|a, b| partial_cmp(*a, *b))
                 .unwrap();
 
-        if max_standard_deviation / initial_max_standard_deviation > 1e8 {
+        if max_standard_deviation / initial_sigma > 1e8 {
             return Some(TerminationReason::TolXUp);
         }
 
         None
     }
 
-    /// Returns the current generation.
+    /// Returns the parameters of the algorithm.
+    pub fn parameters(&self) -> &Parameters {
+        &self.parameters
+    }
+
+    /// Returns the number of generations that have been completed.
     pub fn generation(&self) -> usize {
         self.generation
+    }
+
+    /// Returns the number of times the objective function has been evaluated.
+    pub fn function_evals(&self) -> usize {
+        self.function_evals
+    }
+
+    /// Returns the current mean of the distribution.
+    pub fn mean(&self) -> &DVector<f64> {
+        &self.mean
+    }
+
+    /// Returns the current eigenvalues of the distribution.
+    pub fn eigenvalues(&self) -> DVector<f64> {
+        self.cov_sqrt_eigenvalues.diagonal().map(|x| x.powi(2))
+    }
+
+    /// Returns the current step size of the distribution.
+    pub fn sigma(&self) -> f64 {
+        self.sigma
     }
 
     /// Returns the current best individual and its function value. Will always return `Some` as
