@@ -88,16 +88,12 @@ fn test_tol_x_up() {
 
 fn run_test_no_effect<F: Fn(TerminationReason) -> bool + Clone>(check_reason: F) {
     // Neither `tol_fun` nor `tol_x` can be reached
-    // Modified Rosenbrock function
-    let function = |x: &DVector<f64>| {
-        1e-8 + (1.0 - x[0].powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2))
-            .abs()
-            .sqrt()
-    };
+    let function =
+        |x: &DVector<f64>| 1e-8 + (2.0 * x[0] - x[1]).abs().powf(1.5) + (2.0 - x[1]).powi(2);
     run_test(
         CMAESOptions::new(function, 2)
             .tol_x(1e-16)
-            .population_size(16),
+            .initial_step_size(4.0),
         check_reason,
         1,
     );

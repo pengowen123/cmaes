@@ -4,9 +4,11 @@
 //!
 //! // TODO: example
 //!
-//! See [this paper][0] for details on the algorithm itself.
+//! See [this paper][0] for details on the algorithm itself. Based on the paper and the [pycma][1]
+//! implementation.
 //!
 //! [0]: https://arxiv.org/pdf/1604.00772.pdf
+//! [1]: https://github.com/CMA-ES/pycma
 
 pub mod objective_function;
 pub mod options;
@@ -38,6 +40,11 @@ pub struct TerminationData {
     pub reason: TerminationReason,
 }
 
+#[derive(Clone, Debug)]
+struct InvalidFunctionValueError;
+#[derive(Clone, Debug)]
+struct PosDefCovError;
+
 /// Represents the reason for the algorithm terminating. Most of these are for preventing numerical
 /// instability, while `TolFun` and `TolX` are problem-dependent parameters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -67,9 +74,11 @@ pub enum TerminationReason {
     ConditionCov,
     /// The objective function has returned an invalid value (`NAN` or `-NAN`).
     InvalidFunctionValue,
-    /// The covariance matrix is not positive definite. This probably indicates a bug in the
-    /// library and can be reported [here](https://github.com/pengowen123/cmaes/issues/). Using
-    /// `Weights::Positive` should prevent this entirely in the meantime.
+    /// The covariance matrix is not positive definite. If this is returned frequently, it probably
+    /// indicates a bug in the library and can be reported [here][0]. Using `Weights::Positive`
+    /// should prevent this entirely in the meantime.
+    ///
+    /// [0]: https://github.com/pengowen123/cmaes/issues/
     PosDefCov,
 }
 
@@ -111,8 +120,10 @@ pub struct CMAESState<F> {
     objective_function: F,
     /// Constant parameters, see [Parameters]
     parameters: Parameters,
-    /// Generation number
+    /// The number of generations that have been fully completed
     generation: usize,
+    /// The number of times the objective function has been evaluated
+    function_evals: usize,
     /// The distribution mean
     mean: DVector<f64>,
     /// The distribution covariance matrix
@@ -138,6 +149,8 @@ pub struct CMAESState<F> {
     current_best_individual: Option<DVector<f64>>,
     /// The initial max standard deviation along any principal axis of the distribution
     initial_max_standard_deviation: f64,
+    /// The last time the eigendecomposition was updated, in function evals
+    last_eigen_update_evals: usize,
 }
 
 impl<F: ObjectiveFunction> CMAESState<F> {
@@ -178,11 +191,11 @@ impl<F: ObjectiveFunction> CMAESState<F> {
             Weights::Uniform => vec![1.0; mu],
             // weights.len() == mu
             Weights::Positive => (1..=mu)
-                .map(|i| (mu as f64 + 0.5).ln() - (i as f64).ln())
+                .map(|i| ((lambda as f64 + 1.0) / 2.0).ln() - (i as f64).ln())
                 .collect::<Vec<_>>(),
             // weights.len() == lambda
             Weights::Negative => (1..=lambda)
-                .map(|i| (mu as f64 + 0.5).ln() - (i as f64).ln())
+                .map(|i| ((lambda as f64 + 1.0) / 2.0).ln() - (i as f64).ln())
                 .collect::<Vec<_>>(),
         }
         .into();
@@ -260,6 +273,7 @@ impl<F: ObjectiveFunction> CMAESState<F> {
             objective_function: options.objective_function,
             parameters,
             generation: 0,
+            function_evals: 0,
             mean,
             cov,
             cov_eigenvectors,
@@ -271,6 +285,7 @@ impl<F: ObjectiveFunction> CMAESState<F> {
             median_function_values: VecDeque::new(),
             current_best_individual: None,
             initial_max_standard_deviation: sigma,
+            last_eigen_update_evals: 0,
         })
     }
 
@@ -287,52 +302,31 @@ impl<F: ObjectiveFunction> CMAESState<F> {
         None
     }
 
-    /// Advances to the next generation. Returns `Some` if a termination condition has been reached
-    /// and the algorithm should be stopped.
-    pub fn next(&mut self) -> Option<TerminationData> {
-        let Parameters {
-            dim,
-            lambda,
-            mu,
-            mu_eff,
-            ref weights,
-            cc,
-            c1,
-            cs,
-            cmu,
-            cm,
-            damp_s,
-            ..
-        } = self.parameters;
-
-        let Self {
-            ref mut generation,
-            ref mut mean,
-            ref mut cov,
-            ref mut cov_eigenvectors,
-            ref mut cov_sqrt_eigenvalues,
-            ref mut sigma,
-            ref mut path_c,
-            ref mut path_sigma,
-            ..
-        } = self;
-
-        // How many generations to store in self.best_function_values and
-        // self.median_function_values
-        let past_generations_to_store = ((0.2 * *generation as f64).ceil() as usize)
-            .max(120 + (30.0 * dim as f64 / lambda as f64).ceil() as usize)
-            .min(20000);
-
-        // Sample individuals
+    /// Samples `lambda` points from the distribution and returns the points and their
+    /// corresponding objective function values sorted by their objective function values. Also
+    /// updates the histories of the best and median function values.
+    ///
+    /// Returns `Err` if an invalid function value was encountered.
+    fn sample(
+        &mut self,
+        past_generations_to_store: usize,
+    ) -> Result<Vec<(DVector<f64>, f64)>, InvalidFunctionValueError> {
         let mut rng = rand::thread_rng();
         let normal = Normal::new(0.0, 1.0).unwrap();
+        let params = &self.parameters;
+
         // Random steps in the distribution N(0, cov)
-        let y = (0..lambda)
-            .map(|_| DVector::from_iterator(dim, (0..dim).map(|_| normal.sample(&mut rng))))
-            .map(|zk| &*cov_eigenvectors * &*cov_sqrt_eigenvalues * zk)
+        let y = (0..params.lambda)
+            .map(|_| {
+                DVector::from_iterator(params.dim, (0..params.dim).map(|_| normal.sample(&mut rng)))
+            })
+            .map(|zk| &self.cov_eigenvectors * &self.cov_sqrt_eigenvalues * zk)
             .collect::<Vec<_>>();
         // Transform steps in y to the final distribution of N(mean, sigma^2 * cov)
-        let z = y.iter().map(|yk| &*mean + *sigma * yk).collect::<Vec<_>>();
+        let z = y
+            .iter()
+            .map(|yk| &self.mean + self.sigma * yk)
+            .collect::<Vec<_>>();
 
         // Evaluate and rank steps by evaluating their transformed counterparts
         let mut individuals = y
@@ -341,11 +335,13 @@ impl<F: ObjectiveFunction> CMAESState<F> {
             .zip(z.par_iter().map(|zk| self.objective_function.evaluate(zk)))
             .collect::<Vec<_>>();
 
+        self.function_evals += individuals.len();
+
         individuals.sort_by(|a, b| partial_cmp(&a.1, &b.1));
 
         // Update histories of best and median values
         let (best_step, best_value) = individuals[0].clone();
-        let best_individual = &*mean + *sigma * best_step;
+        let best_individual = &self.mean + self.sigma * best_step;
         self.current_best_individual = Some(best_individual);
 
         self.best_function_values.push_front(best_value);
@@ -361,84 +357,123 @@ impl<F: ObjectiveFunction> CMAESState<F> {
 
         // Check for invalid function values
         if individuals.iter().any(|(_, x)| x.is_nan()) {
-            return Some(self.get_termination_data(TerminationReason::InvalidFunctionValue));
+            Err(InvalidFunctionValueError)
+        } else {
+            Ok(individuals)
         }
+    }
+
+    /// Advances to the next generation. Returns `Some` if a termination condition has been reached
+    /// and the algorithm should be stopped.
+    pub fn next(&mut self) -> Option<TerminationData> {
+        // How many generations to store in self.best_function_values and
+        // self.median_function_value8
+        let past_generations_to_store = ((0.2 * self.generation as f64).ceil() as usize)
+            .max(
+                120 + (30.0 * self.parameters.dim as f64 / self.parameters.lambda as f64).ceil()
+                    as usize,
+            )
+            .min(20000);
+
+        // Sample individuals
+        let individuals = match self.sample(past_generations_to_store) {
+            Ok(x) => x,
+            Err(_) => {
+                return Some(self.get_termination_data(TerminationReason::InvalidFunctionValue));
+            }
+        };
+
+        let params = &self.parameters;
 
         // Calculate new mean through weighted recombination
         // Only the mu best individuals are used even if there are lambda weights
         let yw = individuals
             .iter()
-            .take(mu)
+            .take(params.mu)
             .enumerate()
-            .map(|(i, (y, _))| y * weights[i])
+            .map(|(i, (y, _))| y * params.weights[i])
             .sum::<DVector<f64>>();
-        *mean = &*mean + &(cm * *sigma * &yw);
+        self.mean = &self.mean + &(params.cm * self.sigma * &yw);
 
         // Update evolution paths
-        let sqrt_inv_c = &*cov_eigenvectors
-            * DMatrix::from_diagonal(&cov_sqrt_eigenvalues.map_diagonal(|d| 1.0 / d))
-            * cov_eigenvectors.transpose();
+        let sqrt_inv_c = &self.cov_eigenvectors
+            * DMatrix::from_diagonal(&self.cov_sqrt_eigenvalues.map_diagonal(|d| 1.0 / d))
+            * self.cov_eigenvectors.transpose();
 
-        *path_sigma =
-            (1.0 - cs) * &*path_sigma + (cs * (2.0 - cs) * mu_eff).sqrt() * &sqrt_inv_c * &yw;
+        self.path_sigma = (1.0 - params.cs) * &self.path_sigma
+            + (params.cs * (2.0 - params.cs) * params.mu_eff).sqrt() * &sqrt_inv_c * &yw;
 
         // Expectation of N(0, I)
-        let chi_n = (dim as f64).sqrt()
-            * (1.0 - 1.0 / (4.0 * dim as f64) + 1.0 / (21.0 * dim.pow(2) as f64));
+        let chi_n = (params.dim as f64).sqrt()
+            * (1.0 - 1.0 / (4.0 * params.dim as f64) + 1.0 / (21.0 * params.dim.pow(2) as f64));
 
-        let hs = if (path_sigma.magnitude()
-            / (1.0 - (1.0 - cs).powi(2 * (*generation as i32 + 1))).sqrt())
-            < (1.4 + 2.0 / (dim as f64 + 1.0)) * chi_n
+        let hs = if (self.path_sigma.magnitude()
+            / (1.0 - (1.0 - params.cs).powi(2 * (self.generation as i32 + 1))).sqrt())
+            < (1.4 + 2.0 / (params.dim as f64 + 1.0)) * chi_n
         {
             1.0
         } else {
             0.0
         };
 
-        *path_c = (1.0 - cc) * &*path_c + hs * (cc * (2.0 - cc) * mu_eff).sqrt() * &yw;
+        self.path_c = (1.0 - params.cc) * &self.path_c
+            + hs * (params.cc * (2.0 - params.cc) * params.mu_eff).sqrt() * &yw;
 
         // Update step size
-        *sigma = *sigma * ((cs / damp_s) * ((path_sigma.magnitude() / chi_n) - 1.0)).exp();
+        self.sigma *=
+            ((params.cs / params.damp_s) * ((self.path_sigma.magnitude() / chi_n) - 1.0)).exp();
 
         // Update covariance matrix
-        let weights_cov = weights
+        let weights_cov = params
+            .weights
             .iter()
             .enumerate()
             .map(|(i, w)| {
                 *w * if *w >= 0.0 {
                     1.0
                 } else {
-                    dim as f64 / (&sqrt_inv_c * &y[i]).magnitude().powi(2)
+                    params.dim as f64 / (&sqrt_inv_c * &individuals[i].0).magnitude().powi(2)
                 }
             })
             .collect::<Vec<_>>();
 
-        let delta_hs = (1.0 - hs) * cc * (2.0 - cc);
-        *cov = (1.0 + c1 * delta_hs - c1 - cmu * weights.iter().sum::<f64>()) * &*cov
-            + c1 * &*path_c * path_c.transpose()
-            + cmu
+        let delta_hs = (1.0 - hs) * params.cc * (2.0 - params.cc);
+        self.cov = (1.0 + params.c1 * delta_hs
+            - params.c1
+            - params.cmu * params.weights.iter().sum::<f64>())
+            * &self.cov
+            + params.c1 * &self.path_c * self.path_c.transpose()
+            + params.cmu
                 * weights_cov
                     .into_iter()
                     .enumerate()
-                    .map(|(i, wc)| wc * &y[i] * y[i].transpose())
+                    .map(|(i, wc)| wc * &individuals[i].0 * individuals[i].0.transpose())
                     .sum::<DMatrix<f64>>();
 
         // Ensure symmetry
-        cov.fill_lower_triangle_with_upper_triangle();
+        self.cov.fill_lower_triangle_with_upper_triangle();
 
         // Update eigendecomposition occasionally (updating every generation is unnecessary and
         // inefficient for high dim)
-        if *generation % 1.max((1.0 / (10.0 * dim as f64 * (c1 + cmu))).floor() as usize) == 0 {
-            match decompose_cov(cov.clone()) {
-                Some(eigen) => {
-                    *cov_eigenvectors = eigen.eigenvectors;
-                    *cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
+        let evals_per_eigen = (0.5 * params.dim as f64 * params.lambda as f64
+            / ((params.c1 + params.cmu) * params.dim.pow(2) as f64))
+            as usize;
+
+        if self.function_evals > self.last_eigen_update_evals + evals_per_eigen {
+            self.last_eigen_update_evals = self.function_evals;
+
+            match decompose_cov(self.cov.clone()) {
+                Ok(eigen) => {
+                    self.cov_eigenvectors = eigen.eigenvectors;
+                    self.cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
                 }
-                None => return Some(self.get_termination_data(TerminationReason::PosDefCov)),
+                Err(_) => return Some(self.get_termination_data(TerminationReason::PosDefCov)),
             };
         }
 
-        *generation += 1;
+        self.generation += 1;
+
+        // println!("(evals {}) best: {}", self.function_evals, self.get_current_best_individual().unwrap().1);
 
         // Terminate with the current best individual if any termination criterion is met
         let termination_reason =
@@ -648,17 +683,19 @@ struct CovDecomposition {
 
 /// Decomposes a covariance matrix into a set of normalized eigenvectors and a diagonal matrix
 /// containing the square roots of the corresponding eigenvalues
-fn decompose_cov(matrix: DMatrix<f64>) -> Option<CovDecomposition> {
-    let mut eigen = matrix.symmetric_eigen();
+///
+/// Returns `Err` if the matrix is not positive-definite
+fn decompose_cov(matrix: DMatrix<f64>) -> Result<CovDecomposition, PosDefCovError> {
+    let mut eigen = nalgebra_lapack::SymmetricEigen::new(matrix);
 
     for mut col in eigen.eigenvectors.column_iter_mut() {
         col.normalize_mut();
     }
 
     if eigen.eigenvalues.iter().any(|x| *x <= 0.0) {
-        None
+        Err(PosDefCovError)
     } else {
-        Some(CovDecomposition {
+        Ok(CovDecomposition {
             eigenvectors: eigen.eigenvectors,
             sqrt_eigenvalues: DMatrix::from_diagonal(&eigen.eigenvalues.map(|x| x.sqrt())),
         })
@@ -696,19 +733,21 @@ mod tests {
     // normalized properly
     #[test]
     fn test_weights_positive() {
-        for n in 1..10 {
-            let cmaes_state = CMAESOptions::new(dummy_function, 3)
-                .weights(Weights::Positive)
-                .population_size(n * 4)
-                .build()
-                .unwrap();
+        for d in 2..30 {
+            for n in 1..20 {
+                let mut options = CMAESOptions::new(dummy_function, d).weights(Weights::Positive);
 
-            assert!(cmaes_state.parameters.weights.iter().all(|w| *w > 0.0));
-            assert_approx_eq!(
-                cmaes_state.parameters.weights.iter().sum::<f64>(),
-                1.0,
-                1e-12
-            );
+                options.population_size *= n;
+
+                let cmaes_state = options.build().unwrap();
+
+                assert!(cmaes_state.parameters.weights.iter().all(|w| *w > 0.0));
+                assert_approx_eq!(
+                    cmaes_state.parameters.weights.iter().sum::<f64>(),
+                    1.0,
+                    1e-12
+                );
+            }
         }
     }
 
@@ -716,37 +755,37 @@ mod tests {
     // negative values for the rest
     #[test]
     fn test_weights_negative() {
-        for n in 1..10 {
-            let cmaes_state = CMAESOptions::new(dummy_function, 3)
-                .weights(Weights::Negative)
-                .population_size(n * 4)
-                .build()
-                .unwrap();
+        for d in 2..30 {
+            for n in 1..20 {
+                let mut options = CMAESOptions::new(dummy_function, d).weights(Weights::Negative);
+                options.population_size *= n;
+                let cmaes_state = options.build().unwrap();
 
-            assert!(cmaes_state
-                .parameters
-                .weights
-                .iter()
-                .take(cmaes_state.parameters.mu)
-                .all(|w| *w > 0.0));
-
-            assert_approx_eq!(
-                cmaes_state
+                assert!(cmaes_state
                     .parameters
                     .weights
                     .iter()
                     .take(cmaes_state.parameters.mu)
-                    .sum::<f64>(),
-                1.0,
-                1e-12
-            );
+                    .all(|w| *w > 0.0));
 
-            assert!(cmaes_state
-                .parameters
-                .weights
-                .iter()
-                .skip(cmaes_state.parameters.mu)
-                .all(|w| *w < 0.0));
+                assert_approx_eq!(
+                    cmaes_state
+                        .parameters
+                        .weights
+                        .iter()
+                        .take(cmaes_state.parameters.mu)
+                        .sum::<f64>(),
+                    1.0,
+                    1e-12
+                );
+
+                assert!(cmaes_state
+                    .parameters
+                    .weights
+                    .iter()
+                    .skip(cmaes_state.parameters.mu)
+                    .all(|w| *w <= 0.0));
+            }
         }
     }
 
@@ -823,14 +862,14 @@ mod tests {
         let dim = 2;
         let mut cmaes_state = CMAESOptions::new(dummy_function, dim).build().unwrap();
         let mut values = Vec::new();
-        values.extend(vec![1.0; 20]);
-        values.extend(vec![2.0; 20]);
-        values.extend(vec![2.0; 20]);
-        values.extend(vec![1.0; 20]);
+        values.extend(vec![1.0; 10]);
+        values.extend(vec![2.0; 10]);
+        values.extend(vec![2.0; 10]);
+        values.extend(vec![1.0; 10]);
         cmaes_state.best_function_values.extend(values.clone());
         cmaes_state.median_function_values.extend(values.clone());
         assert_eq!(
-            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 80),
+            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 1.0); 100], 40),
             Some(TerminationReason::Stagnation),
         );
     }

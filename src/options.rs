@@ -32,7 +32,7 @@ pub struct CMAESOptions<F> {
     /// Initial step size of the search distribution. This should be set to a first guess at how far
     /// the solution is from the initial mean. Default value is `0.5`.
     pub initial_step_size: f64,
-    /// Number of points to generate each generation. Default value is `4 + 3 * floor(ln(dimensions))`.
+    /// Number of points to generate each generation. Default value is `4 + floor(3 * ln(dimensions))`.
     ///
     /// A larger population size will increase the robustness of the algorithm and help avoid local optima,
     /// but will lead to a slower convergence rate. Conversely, a lower value will reduce the robustness of
@@ -64,7 +64,7 @@ impl<F: ObjectiveFunction> CMAESOptions<F> {
             dimensions,
             initial_mean: DVector::zeros(dimensions),
             initial_step_size: 0.5,
-            population_size: 4 + 3 * (dimensions as f64).ln().floor() as usize,
+            population_size: 4 + (3.0 * (dimensions as f64).ln()).floor() as usize,
             weights: Weights::Negative,
             cm: 1.0,
             tol_fun: 1e-12,
