@@ -14,16 +14,14 @@ use crate::{CMAESState, ObjectiveFunction};
 /// # use cmaes::CMAESOptions;
 /// let function = |x: &DVector<f64>| x.magnitude();
 /// let dim = 3;
-/// let cmaes_state = CMAESOptions::new(function, dim)
+/// let cmaes_state = CMAESOptions::new(dim)
 ///     .initial_mean(vec![2.0; dim])
 ///     .initial_step_size(5.0)
-///     .build()
+///     .build(function)
 ///     .unwrap();
 /// ```
 #[derive(Clone)]
-pub struct CMAESOptions<F> {
-    /// The objective function to minimize.
-    pub objective_function: F,
+pub struct CMAESOptions {
     /// Number of dimensions to search.
     pub dimensions: usize,
     /// Initial mean of the search distribution. This should be set to a first guess at the
@@ -55,12 +53,11 @@ pub struct CMAESOptions<F> {
     pub tol_x: Option<f64>,
 }
 
-impl<F: ObjectiveFunction> CMAESOptions<F> {
+impl CMAESOptions {
     /// Creates a new `CMAESOptions` with default values. Set individual options using the provided
     /// methods.
-    pub fn new(objective_function: F, dimensions: usize) -> Self {
+    pub fn new(dimensions: usize) -> Self {
         Self {
-            objective_function,
             dimensions,
             initial_mean: DVector::zeros(dimensions),
             initial_step_size: 0.5,
@@ -119,8 +116,8 @@ impl<F: ObjectiveFunction> CMAESOptions<F> {
     }
 
     /// Attempts to build the [`CMAESState`] using the chosen options.
-    pub fn build(self) -> Result<CMAESState<F>, InvalidOptionsError> {
-        CMAESState::new(self)
+    pub fn build<F: ObjectiveFunction + 'static>(self, objective_function: F) -> Result<CMAESState, InvalidOptionsError> {
+        CMAESState::new(Box::new(objective_function), self)
     }
 }
 

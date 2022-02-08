@@ -13,11 +13,11 @@ fn rosenbrock(point: &DVector<f64>) -> f64 {
 fn main() {
     // Customize parameters for the problem
     let dim = 2;
-    let mut cmaes_state = CMAESOptions::new(rosenbrock, dim)
+    let mut cmaes_state = CMAESOptions::new(dim)
         .weights(Weights::Positive)
         .tol_fun(1e-13)
         .tol_x(1e-13)
-        .build()
+        .build(rosenbrock)
         .unwrap();
 
     // Find a solution

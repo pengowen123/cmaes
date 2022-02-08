@@ -4,12 +4,12 @@
 use nalgebra::DVector;
 
 // TODO: docs
-pub trait ObjectiveFunction: Sync {
-    fn evaluate(&self, x: &DVector<f64>) -> f64;
+pub trait ObjectiveFunction {
+    fn evaluate(&mut self, x: &DVector<f64>) -> f64;
 }
 
-impl<F: Sync + Fn(&DVector<f64>) -> f64> ObjectiveFunction for F {
-    fn evaluate(&self, x: &DVector<f64>) -> f64 {
+impl<F: FnMut(&DVector<f64>) -> f64> ObjectiveFunction for F {
+    fn evaluate(&mut self, x: &DVector<f64>) -> f64 {
         (self)(x)
     }
 }
