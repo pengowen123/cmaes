@@ -227,7 +227,10 @@ pub struct CMAESState {
 impl CMAESState {
     /// Initializes a `CMAESState` from a set of [`CMAESOptions`]. [`CMAESOptions::build`] should
     /// generally be used instead.
-    pub fn new(objective_function: Box<dyn ObjectiveFunction>, options: CMAESOptions) -> Result<Self, InvalidOptionsError> {
+    pub fn new(
+        objective_function: Box<dyn ObjectiveFunction>,
+        options: CMAESOptions,
+    ) -> Result<Self, InvalidOptionsError> {
         // Check for invalid options
         if options.dimensions == 0 {
             return Err(InvalidOptionsError::Dimensions);

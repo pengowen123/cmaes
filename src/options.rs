@@ -116,7 +116,10 @@ impl CMAESOptions {
     }
 
     /// Attempts to build the [`CMAESState`] using the chosen options.
-    pub fn build<F: ObjectiveFunction + 'static>(self, objective_function: F) -> Result<CMAESState, InvalidOptionsError> {
+    pub fn build<F: ObjectiveFunction + 'static>(
+        self,
+        objective_function: F,
+    ) -> Result<CMAESState, InvalidOptionsError> {
         CMAESState::new(Box::new(objective_function), self)
     }
 }
