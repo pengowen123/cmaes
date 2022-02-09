@@ -36,7 +36,7 @@ fn main() {
             data.best_individual.as_slice(),
         );
     } else {
-        let current_best = cmaes_state.get_current_best_individual().unwrap();
+        let current_best = cmaes_state.current_best_individual().unwrap();
 
         println!(
             "Did not terminate after {} generations\nBest point has value {:e} and coordinates {:?}",

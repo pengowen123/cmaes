@@ -18,6 +18,8 @@ pub use crate::options::{CMAESOptions, Weights};
 
 use nalgebra::{DMatrix, DVector};
 use rand::distributions::Distribution;
+use rand::SeedableRng;
+use rand_chacha::ChaCha12Rng;
 use statrs::distribution::Normal;
 use statrs::statistics::{Data, Median};
 
@@ -112,6 +114,8 @@ pub struct Parameters {
     tol_fun: f64,
     /// Value for the TolX termination criterion
     tol_x: f64,
+    /// Seed for the RNG
+    seed: u64,
 }
 
 impl Parameters {
@@ -184,6 +188,11 @@ impl Parameters {
     pub fn tol_x(&self) -> f64 {
         self.tol_x
     }
+
+    /// Returns the seed for the RNG.
+    pub fn seed(&self) -> u64 {
+        self.seed
+    }
 }
 
 /// Stores the iteration state of and runs the algorithm. Use [`CMAESOptions`] to create a
@@ -222,6 +231,8 @@ pub struct CMAESState {
     current_best_individual: Option<DVector<f64>>,
     /// The last time the eigendecomposition was updated, in function evals
     last_eigen_update_evals: usize,
+    /// RNG from which all random numbers are sourced
+    rng: ChaCha12Rng,
 }
 
 impl CMAESState {
@@ -317,6 +328,10 @@ impl CMAESState {
         let cs = (mu_eff + 2.0) / (dim as f64 + mu_eff + 5.0);
         let damp_s = 1.0 + cs + 2.0 * (((mu_eff - 1.0) / (dim as f64 + 1.0)).sqrt() - 1.0).max(0.0);
 
+        // Initialize rng
+        let seed = options.seed.unwrap_or(rand::random());
+        let rng = ChaCha12Rng::seed_from_u64(seed);
+
         let parameters = Parameters {
             dim,
             lambda,
@@ -332,6 +347,7 @@ impl CMAESState {
             damp_s,
             tol_fun: options.tol_fun,
             tol_x: options.tol_x.unwrap_or(1e-12 * options.initial_step_size),
+            seed,
         };
 
         // Initialize variable parameters
@@ -360,6 +376,7 @@ impl CMAESState {
             median_function_values: VecDeque::new(),
             current_best_individual: None,
             last_eigen_update_evals: 0,
+            rng,
         })
     }
 
@@ -385,14 +402,16 @@ impl CMAESState {
         &mut self,
         past_generations_to_store: usize,
     ) -> Result<Vec<(DVector<f64>, f64)>, InvalidFunctionValueError> {
-        let mut rng = rand::thread_rng();
         let normal = Normal::new(0.0, 1.0).unwrap();
         let params = &self.parameters;
 
         // Random steps in the distribution N(0, cov)
         let y = (0..params.lambda)
             .map(|_| {
-                DVector::from_iterator(params.dim, (0..params.dim).map(|_| normal.sample(&mut rng)))
+                DVector::from_iterator(
+                    params.dim,
+                    (0..params.dim).map(|_| normal.sample(&mut self.rng)),
+                )
             })
             .map(|zk| &self.cov_eigenvectors * &self.cov_sqrt_eigenvalues * zk)
             .collect::<Vec<_>>();
@@ -546,8 +565,6 @@ impl CMAESState {
         }
 
         self.generation += 1;
-
-        // println!("(evals {}) best: {}", self.function_evals, self.get_current_best_individual().unwrap().1);
 
         // Terminate with the current best individual if any termination criterion is met
         let termination_reason =
@@ -749,7 +766,7 @@ impl CMAESState {
 
     /// Returns the current best individual and its function value. Will always return `Some` as
     /// long as [`Self::next`] has been called at least once.
-    pub fn get_current_best_individual(&self) -> Option<(&DVector<f64>, f64)> {
+    pub fn current_best_individual(&self) -> Option<(&DVector<f64>, f64)> {
         self.best_function_values
             .front()
             .map(|x| (self.current_best_individual.as_ref().unwrap(), *x))
@@ -757,7 +774,7 @@ impl CMAESState {
 
     /// Returns a `TerminationData` with the current best individual/value and the given reason.
     fn get_termination_data(&self, reason: TerminationReason) -> TerminationData {
-        let (best_individual, best_function_value) = self.get_current_best_individual().unwrap();
+        let (best_individual, best_function_value) = self.current_best_individual().unwrap();
 
         return TerminationData {
             best_individual: best_individual.clone(),
