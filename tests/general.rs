@@ -1,11 +1,11 @@
 //! General tests
 
+use assert_approx_eq::assert_approx_eq;
 use cmaes::{CMAESOptions, ObjectiveFunction, Weights};
 use nalgebra::DVector;
-use assert_approx_eq::assert_approx_eq;
 
-use std::f64::consts::PI;
 use std::collections::HashMap;
+use std::f64::consts::PI;
 
 // Number of times to repeat each test
 // Necessary to account for the inherent randomness of the algorithm
@@ -262,7 +262,7 @@ fn test_fixed_seed() {
         0.45043390884929013,
         0.12148408546978581,
         -0.024154735384168395,
-        -0.050013317101592646
+        -0.050013317101592646,
     ];
     for (x, expected) in best.0.iter().zip(best_expected) {
         assert_approx_eq!(x, expected, eps);

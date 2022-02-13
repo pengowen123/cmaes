@@ -2,7 +2,7 @@
 
 use nalgebra::DVector;
 
-use crate::{CMAESState, ObjectiveFunction};
+use crate::{CMAESState, ObjectiveFunction, PlotOptions};
 
 /// A builder for [`CMAESState`]. Used to adjust parameters of the algorithm to each particular
 /// problem.
@@ -54,6 +54,9 @@ pub struct CMAESOptions {
     /// The seed for the RNG used in the algorithm. Can be set manually for deterministic runs. By
     /// default a random seed is used if this field is `None`.
     pub seed: Option<u64>,
+    /// Options for the data plot. Default value is `None`, meaning no plot will be generated. See
+    /// [`Plot`].
+    pub plot_options: Option<PlotOptions>,
 }
 
 impl CMAESOptions {
@@ -70,6 +73,7 @@ impl CMAESOptions {
             tol_fun: 1e-12,
             tol_x: None,
             seed: None,
+            plot_options: None,
         }
     }
 
@@ -122,6 +126,12 @@ impl CMAESOptions {
     /// Sets the seed for the RNG.
     pub fn seed(mut self, seed: u64) -> Self {
         self.seed = Some(seed);
+        self
+    }
+
+    /// Enables recording of a data plot for various state variables of the algorithm. See [`Plot`].
+    pub fn enable_plot(mut self, plot_options: PlotOptions) -> Self {
+        self.plot_options = Some(plot_options);
         self
     }
 

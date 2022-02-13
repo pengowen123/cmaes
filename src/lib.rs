@@ -12,9 +12,12 @@
 
 pub mod objective_function;
 pub mod options;
+pub mod plotting;
+mod utils;
 
 pub use crate::objective_function::ObjectiveFunction;
 pub use crate::options::{CMAESOptions, Weights};
+pub use crate::plotting::PlotOptions;
 
 use nalgebra::{DMatrix, DVector};
 use rand::distributions::Distribution;
@@ -23,17 +26,17 @@ use rand_chacha::ChaCha12Rng;
 use statrs::distribution::Normal;
 use statrs::statistics::{Data, Median};
 
-use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::f64;
 
-use options::InvalidOptionsError;
+use crate::options::InvalidOptionsError;
+use crate::plotting::Plot;
 
 /// Data returned when the algorithm terminates.
 ///
-/// Contains the best individual and its corresponding function value as of the latest generation.
-/// Also contains the reason for termination, which can be matched on to decide how to interpret
-/// the result and whether and how to restart the algorithm.
+/// Contains the best individual of the latest generation and its corresponding function value. Also
+/// contains the reason for termination, which can be used to decide how to interpret the result and
+/// whether and how to restart the algorithm.
 #[derive(Clone, Debug)]
 pub struct TerminationData {
     pub best_individual: DVector<f64>,
@@ -227,12 +230,14 @@ pub struct CMAESState {
     /// A history of the median function values of the past k generations (see [`CMAESState::next]`)
     /// (values at the front are from more recent generations)
     median_function_values: VecDeque<f64>,
-    /// The current best individual
+    /// The best individual of the latest generation
     current_best_individual: Option<DVector<f64>>,
     /// The last time the eigendecomposition was updated, in function evals
     last_eigen_update_evals: usize,
     /// RNG from which all random numbers are sourced
     rng: ChaCha12Rng,
+    /// Data plot if enabled
+    plot: Option<Plot>,
 }
 
 impl CMAESState {
@@ -360,7 +365,10 @@ impl CMAESState {
         let path_c = DVector::zeros(options.dimensions);
         let path_sigma = DVector::zeros(options.dimensions);
 
-        Ok(Self {
+        // Initialize plot if enabled
+        let plot = options.plot_options.map(|o| Plot::new(dim, o));
+
+        let mut state = Self {
             objective_function,
             parameters,
             generation: 0,
@@ -377,7 +385,12 @@ impl CMAESState {
             current_best_individual: None,
             last_eigen_update_evals: 0,
             rng,
-        })
+            plot,
+        };
+
+        // Plot initial state
+        state.add_plot_point();
+        Ok(state)
     }
 
     /// Iterates the algorithm until termination or until `max_generations` is reached. If no
@@ -389,6 +402,9 @@ impl CMAESState {
                 return Some(data);
             }
         }
+
+        // Plot the final state
+        self.add_plot_point();
 
         None
     }
@@ -430,7 +446,7 @@ impl CMAESState {
 
         self.function_evals += individuals.len();
 
-        individuals.sort_by(|a, b| partial_cmp(&a.1, &b.1));
+        individuals.sort_by(|a, b| utils::partial_cmp(&a.1, &b.1));
 
         // Update histories of best and median values
         let (best_step, best_value) = individuals[0].clone();
@@ -458,6 +474,7 @@ impl CMAESState {
 
     /// Advances to the next generation. Returns `Some` if a termination condition has been reached
     /// and the algorithm should be stopped.
+    #[must_use]
     pub fn next(&mut self) -> Option<TerminationData> {
         // How many generations to store in self.best_function_values and
         // self.median_function_value8
@@ -566,6 +583,12 @@ impl CMAESState {
 
         self.generation += 1;
 
+        if let Some(ref plot) = self.plot {
+            if self.function_evals >= plot.get_next_data_point_evals() {
+                self.add_plot_point();
+            }
+        }
+
         // Terminate with the current best individual if any termination criterion is met
         let termination_reason =
             self.check_termination_criteria(&individuals, past_generations_to_store);
@@ -611,14 +634,14 @@ impl CMAESState {
                 .best_function_values
                 .iter()
                 .take(past_generations_a)
-                .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                .max_by(|a, b| utils::partial_cmp(*a, *b))
                 .unwrap();
 
             let min = self
                 .best_function_values
                 .iter()
                 .take(past_generations_a)
-                .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                .min_by(|a, b| utils::partial_cmp(*a, *b))
                 .unwrap();
 
             let range = (max - min).abs();
@@ -640,12 +663,12 @@ impl CMAESState {
         let diag = cov_sqrt_eigenvalues.diagonal();
         let max_eigenvalue = diag
             .iter()
-            .max_by(|a, b| partial_cmp(*a, *b))
+            .max_by(|a, b| utils::partial_cmp(*a, *b))
             .unwrap()
             .powi(2);
         let min_eigenvalue = diag
             .iter()
-            .min_by(|a, b| partial_cmp(*a, *b))
+            .min_by(|a, b| utils::partial_cmp(*a, *b))
             .unwrap()
             .powi(2);
         let cond = (max_eigenvalue / min_eigenvalue).abs();
@@ -724,7 +747,7 @@ impl CMAESState {
             * cov_sqrt_eigenvalues
                 .diagonal()
                 .iter()
-                .max_by(|a, b| partial_cmp(*a, *b))
+                .max_by(|a, b| utils::partial_cmp(*a, *b))
                 .unwrap();
 
         if max_standard_deviation / initial_sigma > 1e8 {
@@ -754,6 +777,11 @@ impl CMAESState {
         &self.mean
     }
 
+    /// Returns the current covariance matrix of the distribution.
+    pub fn covariance_matrix(&self) -> &DMatrix<f64> {
+        &self.cov
+    }
+
     /// Returns the current eigenvalues of the distribution.
     pub fn eigenvalues(&self) -> DVector<f64> {
         self.cov_sqrt_eigenvalues.diagonal().map(|x| x.powi(2))
@@ -764,12 +792,22 @@ impl CMAESState {
         self.sigma
     }
 
-    /// Returns the current best individual and its function value. Will always return `Some` as
-    /// long as [`Self::next`] has been called at least once.
+    /// Returns the best individual of the latest generation and its function value. Will always
+    /// return `Some` as long as [`Self::next`] has been called at least once.
     pub fn current_best_individual(&self) -> Option<(&DVector<f64>, f64)> {
         self.best_function_values
             .front()
             .map(|x| (self.current_best_individual.as_ref().unwrap(), *x))
+    }
+
+    /// Returns a reference to the data plot if enabled.
+    pub fn get_plot(&self) -> Option<&Plot> {
+        self.plot.as_ref()
+    }
+
+    /// Returns a mutable reference to the data plot if enabled.
+    pub fn get_mut_plot(&mut self) -> Option<&mut Plot> {
+        self.plot.as_mut()
     }
 
     /// Returns a `TerminationData` with the current best individual/value and the given reason.
@@ -782,11 +820,16 @@ impl CMAESState {
             reason,
         };
     }
-}
 
-/// Used for finding max/min values
-fn partial_cmp(a: &f64, b: &f64) -> Ordering {
-    a.partial_cmp(b).unwrap_or(Ordering::Less)
+    /// Adds a data point to the data plot if enabled. Can be called manually after termination to
+    /// plot the final state if [`CMAESState::run`] isn't used.
+    pub fn add_plot_point(&mut self) {
+        // The plot is swapped out temporarily to avoid borrower issues
+        if let Some(mut plot) = self.plot.take() {
+            plot.add_data_point(&*self);
+            self.plot = Some(plot);
+        }
+    }
 }
 
 /// Decomposition of a covariance matrix

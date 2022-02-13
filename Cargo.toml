@@ -10,6 +10,7 @@ nalgebra = "0.30.1"
 nalgebra-lapack = "0.21.0"
 num-traits = "0.2.14"
 statrs = "0.15.0"
+plotters = "0.3.1"
 
 [dev-dependencies]
 assert_approx_eq = "1.1.0"
