@@ -30,8 +30,8 @@ fn run_test<F: ObjectiveFunction + Clone + 'static>(
         let result = cmaes_state.run(MAX_GENERATIONS).expect("did not terminate");
         let generations = cmaes_state.generation();
 
-        if !(result.best_function_value < options.tol_fun) {
-            failures.push((result.reason, result.best_function_value));
+        if !(result.overall_best.value < options.tol_fun) {
+            failures.push((result.reason, result.overall_best.value));
         }
 
         *reasons.entry(result.reason).or_insert(0) += 1;
@@ -255,18 +255,32 @@ fn test_fixed_seed() {
         assert_approx_eq!(x, expected, eps);
     }
 
+    assert_approx_eq!(cmaes_state.axis_ratio(), 1.907563648004273, eps);
     assert_approx_eq!(cmaes_state.sigma(), 0.1708927201378601, eps);
 
-    let best = cmaes_state.current_best_individual().unwrap();
-    let best_expected = [
+    let current_best = cmaes_state.current_best_individual().unwrap();
+    let current_best_expected = [
         0.45043390884929013,
         0.12148408546978581,
         -0.024154735384168395,
         -0.050013317101592646,
     ];
-    for (x, expected) in best.0.iter().zip(best_expected) {
+    for (x, expected) in current_best.point.iter().zip(current_best_expected) {
         assert_approx_eq!(x, expected, eps);
     }
 
-    assert_approx_eq!(best.1, 3.1928361882670977, eps);
+    assert_approx_eq!(current_best.value, 3.1928361882670977, eps);
+
+    let overall_best = cmaes_state.overall_best_individual().unwrap();
+    let overall_best_expected = [
+        0.4001605505779719,
+        0.16306101682314394,
+        -0.006695725176343273,
+        0.01598022024773967,
+    ];
+    for (x, expected) in overall_best.point.iter().zip(overall_best_expected) {
+        assert_approx_eq!(x, expected, eps);
+    }
+
+    assert_approx_eq!(overall_best.value, 2.210750747950352, eps);
 }

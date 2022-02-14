@@ -27,20 +27,39 @@ use statrs::distribution::Normal;
 use statrs::statistics::{Data, Median};
 
 use std::collections::VecDeque;
-use std::f64;
+use std::{f64, iter};
+use std::fmt::{self, Debug};
 
 use crate::options::InvalidOptionsError;
 use crate::plotting::Plot;
 
+/// An individual point with its corresponding objective function value.
+#[derive(Clone, Debug)]
+pub struct Individual {
+    pub point: DVector<f64>,
+    pub value: f64,
+}
+
+impl Individual {
+    fn new(point: DVector<f64>, value: f64) -> Self {
+        Self { point, value }
+    }
+}
+
 /// Data returned when the algorithm terminates.
 ///
-/// Contains the best individual of the latest generation and its corresponding function value. Also
-/// contains the reason for termination, which can be used to decide how to interpret the result and
-/// whether and how to restart the algorithm.
+/// Contains the:
+///
+/// - Best individual of the latest generation
+/// - Best individual overall
+/// - Final mean, which may be better than either individual
+/// - Reason for termination, which can be used to decide how to interpret the result and
+/// whether and how to restart the algorithm
 #[derive(Clone, Debug)]
 pub struct TerminationData {
-    pub best_individual: DVector<f64>,
-    pub best_function_value: f64,
+    pub current_best: Individual,
+    pub overall_best: Individual,
+    pub final_mean: DVector<f64>,
     pub reason: TerminationReason,
 }
 
@@ -86,6 +105,12 @@ pub enum TerminationReason {
     PosDefCov,
 }
 
+impl fmt::Display for TerminationReason {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        Debug::fmt(self, fmt)
+    }
+}
+
 /// Stores constant parameters for the algorithm. Obtained by calling [`CMAESState::parameters`].
 #[derive(Clone, Debug)]
 pub struct Parameters {
@@ -101,6 +126,8 @@ pub struct Parameters {
     mu_eff: f64,
     /// Individual weights
     weights: DVector<f64>,
+    /// The setting used for calculating the weights
+    weights_setting: Weights,
     /// Learning rate for rank-one update cumulation
     cc: f64,
     /// Learning rate for rank-one update
@@ -150,6 +177,11 @@ impl Parameters {
     /// Returns the weights `w`.
     pub fn weights(&self) -> &DVector<f64> {
         &self.weights
+    }
+
+    /// Returns the setting used for calculating the weights.
+    pub fn weights_setting(&self) -> Weights {
+        self.weights_setting
     }
 
     /// Returns the learning rate for rank-one update cumulation `cc`.
@@ -231,13 +263,20 @@ pub struct CMAESState {
     /// (values at the front are from more recent generations)
     median_function_values: VecDeque<f64>,
     /// The best individual of the latest generation
-    current_best_individual: Option<DVector<f64>>,
+    current_best_individual: Option<Individual>,
+    /// The best individual of any generation
+    overall_best_individual: Option<Individual>,
     /// The last time the eigendecomposition was updated, in function evals
     last_eigen_update_evals: usize,
     /// RNG from which all random numbers are sourced
     rng: ChaCha12Rng,
     /// Data plot if enabled
     plot: Option<Plot>,
+    /// The minimum number of function evaluations to wait for in between each automatic
+    /// [`CMAESState::print_info`] call
+    print_gap_evals: Option<usize>,
+    /// The last time [`CMAESState::print_info`] was called, in function evaluations
+    last_print_evals: usize,
 }
 
 impl CMAESState {
@@ -344,6 +383,7 @@ impl CMAESState {
             initial_sigma: options.initial_step_size,
             mu_eff,
             weights,
+            weights_setting: options.weights,
             cc,
             c1,
             cs,
@@ -383,30 +423,47 @@ impl CMAESState {
             best_function_values: VecDeque::new(),
             median_function_values: VecDeque::new(),
             current_best_individual: None,
+            overall_best_individual: None,
             last_eigen_update_evals: 0,
             rng,
             plot,
+            print_gap_evals: options.print_gap_evals,
+            last_print_evals: 0,
         };
 
         // Plot initial state
         state.add_plot_point();
+
+        // Print initial info
+        if let Some(_) = state.print_gap_evals {
+            state.print_initial_info();
+        }
+
         Ok(state)
     }
 
     /// Iterates the algorithm until termination or until `max_generations` is reached. If no
     /// termination criteria are met before `max_generations` is reached, `None` will be returned.
-    /// [`Self::next`] can be called manually if more control over termination is needed.
+    /// [`Self::next`] can be called manually if more control over termination is needed
+    /// (plotting/printing the final state must be done manually as well in this case).
     pub fn run(&mut self, max_generations: usize) -> Option<TerminationData> {
+        let mut result = None;
+
         for _ in 0..max_generations {
             if let Some(data) = self.next() {
-                return Some(data);
+                result = Some(data);
+                break;
             }
         }
 
-        // Plot the final state
+        // Plot/print the final state
         self.add_plot_point();
 
-        None
+        if self.print_gap_evals.is_some() {
+            self.print_final_info(result.as_ref().map(|d| d.reason));
+        }
+
+        result
     }
 
     /// Samples `lambda` points from the distribution and returns the points and their
@@ -451,7 +508,6 @@ impl CMAESState {
         // Update histories of best and median values
         let (best_step, best_value) = individuals[0].clone();
         let best_individual = &self.mean + self.sigma * best_step;
-        self.current_best_individual = Some(best_individual);
 
         self.best_function_values.push_front(best_value);
         if self.best_function_values.len() > past_generations_to_store {
@@ -463,6 +519,8 @@ impl CMAESState {
         if self.median_function_values.len() > past_generations_to_store {
             self.median_function_values.pop_back();
         }
+
+        self.update_best_individuals(Individual::new(best_individual, best_value));
 
         // Check for invalid function values
         if individuals.iter().any(|(_, x)| x.is_nan()) {
@@ -477,7 +535,7 @@ impl CMAESState {
     #[must_use]
     pub fn next(&mut self) -> Option<TerminationData> {
         // How many generations to store in self.best_function_values and
-        // self.median_function_value8
+        // self.median_function_value
         let past_generations_to_store = ((0.2 * self.generation as f64).ceil() as usize)
             .max(
                 120 + (30.0 * self.parameters.dim as f64 / self.parameters.lambda as f64).ceil()
@@ -583,9 +641,23 @@ impl CMAESState {
 
         self.generation += 1;
 
+        // Plot latest state
         if let Some(ref plot) = self.plot {
             if self.function_evals >= plot.get_next_data_point_evals() {
                 self.add_plot_point();
+            }
+        }
+
+        // Print latest state
+        if let Some(gap_evals) = self.print_gap_evals {
+            // The first few generations are always printed, then print_gap_evals is respected
+            if self.function_evals >= self.last_print_evals + gap_evals {
+                self.print_info();
+                self.last_print_evals = self.function_evals;
+            } else if self.generation < 4 {
+                // Don't update last_print_evals so the printed generation numbers can remain
+                // multiples of 10
+                self.print_info();
             }
         }
 
@@ -596,6 +668,20 @@ impl CMAESState {
             Some(self.get_termination_data(reason))
         } else {
             None
+        }
+    }
+
+    /// Updates the current and overall best individuals.
+    fn update_best_individuals(&mut self, current_best: Individual) {
+        self.current_best_individual = Some(current_best.clone());
+
+        match &mut self.overall_best_individual {
+            Some(ref mut overall) => {
+                if current_best.value < overall.value {
+                    *overall = current_best;
+                }
+            }
+            None => self.overall_best_individual = Some(current_best),
         }
     }
 
@@ -660,18 +746,7 @@ impl CMAESState {
         }
 
         // Check TerminationReason::ConditionCov
-        let diag = cov_sqrt_eigenvalues.diagonal();
-        let max_eigenvalue = diag
-            .iter()
-            .max_by(|a, b| utils::partial_cmp(*a, *b))
-            .unwrap()
-            .powi(2);
-        let min_eigenvalue = diag
-            .iter()
-            .min_by(|a, b| utils::partial_cmp(*a, *b))
-            .unwrap()
-            .powi(2);
-        let cond = (max_eigenvalue / min_eigenvalue).abs();
+        let cond = self.axis_ratio().powi(2);
 
         if !cond.is_normal() || cond > 1e14 {
             return Some(TerminationReason::ConditionCov);
@@ -792,12 +867,22 @@ impl CMAESState {
         self.sigma
     }
 
+    /// Returns the current axis ratio of the distribution.
+    pub fn axis_ratio(&self) -> f64 {
+        let diag = self.cov_sqrt_eigenvalues.diagonal();
+        diag.max() / diag.min()
+    }
+
     /// Returns the best individual of the latest generation and its function value. Will always
     /// return `Some` as long as [`Self::next`] has been called at least once.
-    pub fn current_best_individual(&self) -> Option<(&DVector<f64>, f64)> {
-        self.best_function_values
-            .front()
-            .map(|x| (self.current_best_individual.as_ref().unwrap(), *x))
+    pub fn current_best_individual(&self) -> Option<&Individual> {
+        self.current_best_individual.as_ref()
+    }
+
+    /// Returns the best individual of any generation and its function value. Will always return
+    /// `Some` as long as [`Self::next`] has been called at least once.
+    pub fn overall_best_individual(&self) -> Option<&Individual> {
+        self.overall_best_individual.as_ref()
     }
 
     /// Returns a reference to the data plot if enabled.
@@ -812,11 +897,10 @@ impl CMAESState {
 
     /// Returns a `TerminationData` with the current best individual/value and the given reason.
     fn get_termination_data(&self, reason: TerminationReason) -> TerminationData {
-        let (best_individual, best_function_value) = self.current_best_individual().unwrap();
-
         return TerminationData {
-            best_individual: best_individual.clone(),
-            best_function_value,
+            current_best: self.current_best_individual().unwrap().clone(),
+            overall_best: self.overall_best_individual().unwrap().clone(),
+            final_mean: self.mean.clone(),
             reason,
         };
     }
@@ -828,6 +912,97 @@ impl CMAESState {
         if let Some(mut plot) = self.plot.take() {
             plot.add_data_point(&*self);
             self.plot = Some(plot);
+        }
+    }
+
+    /// Prints various initial parameters of the algorithm as well as the headers for the columns
+    /// printed by [`CMAESState::print_info`]. The parameters that are printed are the:
+    ///
+    /// - Algorithm variant (based on the [`Weights`] setting)
+    /// - Dimension (N)
+    /// - Population size (lambda)
+    /// - Seed
+    ///
+    /// This function is automatically called if [`CMAESOptions::enable_printing`] is set.
+    pub fn print_initial_info(&self) {
+        let params = &self.parameters;
+        let variant = match params.weights_setting {
+            Weights::Positive | Weights::Uniform => "CMA-ES",
+            Weights::Negative => "aCMA-ES",
+        };
+        println!(
+            "{} with dimension={}, lambda={}, seed={}",
+            variant, params.dim, params.lambda, params.seed
+        );
+
+        let title_string = format!(
+            "{:^7} | {:^7} | {:^19} | {:^10} | {:^10} | {:^10} | {:^10}",
+            "Gen #", "f evals", "Best function value", "Axis Ratio", "Sigma", "Min std", "Max std",
+        );
+
+        println!("{}", title_string);
+        println!(
+            "{}",
+            iter::repeat('-')
+                .take(title_string.chars().count())
+                .collect::<String>()
+        );
+    }
+
+    /// Prints various state variables of the algorithm. The variables that are printed are the:
+    ///
+    /// - Generations completed
+    /// - Function evaluations made
+    /// - Best function value of the latest generation
+    /// - Distribution axis ratio
+    /// - Overall standard deviation (sigma)
+    /// - Minimum and maximum standard deviations in the coordinate axes
+    ///
+    /// This function is automatically called if [`CMAESOptions::enable_printing`] is set.
+    pub fn print_info(&self) {
+        let generations = format!("{:7}", self.generation);
+        let evals = format!("{:7}", self.function_evals);
+        let best_function_value = self
+            .current_best_individual()
+            .map(|x| utils::format_num(x.value, 19))
+            .unwrap_or(format!("{:19}", ""));
+        let axis_ratio = utils::format_num(self.axis_ratio(), 11);
+        let sigma = utils::format_num(self.sigma, 11);
+        let cov_diag = self.cov.diagonal();
+        let min_std = utils::format_num(self.sigma * cov_diag.min().sqrt(), 11);
+        let max_std = utils::format_num(self.sigma * cov_diag.max().sqrt(), 11);
+
+        // The preceding space for values that can't have a negative sign is removed (an extra
+        // digit takes its place)
+        println!(
+            "{} | {} | {} |{} |{} |{} |{}",
+            generations, evals, best_function_value, axis_ratio, sigma, min_std, max_std
+        );
+    }
+
+    /// Calls [`CMAESState::print_info`] if not already called automatically this generation and
+    /// prints the results.
+    ///
+    /// This function is automatically called if [`CMAESOptions::enable_printing`] is set. Must be
+    /// called manually after termination to print the final state if [`CMAESState::run`] isn't
+    /// used.
+    pub fn print_final_info(&self, termination_reason: Option<TerminationReason>) {
+        if self.function_evals != self.last_print_evals {
+            self.print_info();
+        }
+
+        match termination_reason {
+            Some(reason) => println!("Terminated with reason `{}`", reason),
+            None => println!("Did not terminate"),
+        }
+
+        let current_best = self.current_best_individual();
+        let overall_best = self.overall_best_individual();
+
+        if let (Some(current), Some(overall)) = (current_best, overall_best) {
+            println!("Current best function value: {:e}", current.value);
+            println!("Overall best function value: {:e}", overall.value);
+            println!("Final mean: {}", self.mean);
         }
     }
 }
@@ -866,8 +1041,7 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
     use nalgebra::{DMatrix, DVector};
 
-    use super::decompose_cov;
-    use crate::{CMAESOptions, TerminationReason, Weights};
+    use super::*;
 
     fn dummy_function(_: &DVector<f64>) -> f64 {
         0.0
@@ -1108,7 +1282,7 @@ mod tests {
         // ConditionCov
         let dim = 2;
         let mut cmaes_state = CMAESOptions::new(dim).build(dummy_function).unwrap();
-        cmaes_state.cov = DMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e15]);
+        cmaes_state.cov = DMatrix::from_iterator(2, 2, [0.99, 0.0, 0.0, 1e14]);
         let eigen = decompose_cov(cmaes_state.cov.clone()).unwrap();
         cmaes_state.cov_eigenvectors = eigen.eigenvectors;
         cmaes_state.cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;

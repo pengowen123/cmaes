@@ -15,7 +15,10 @@ use plotters::series::LineSeries;
 use plotters::style::{colors, Color, Palette, Palette99};
 
 use std::cmp::Ordering;
-use std::fmt::Debug;
+use std::error::Error;
+use std::fmt::{self, Debug};
+use std::fs::DirBuilder;
+use std::io;
 use std::ops::Range;
 use std::path::Path;
 
@@ -68,7 +71,7 @@ impl PlotData {
         self.function_evals.push(state.function_evals());
         let best_function_value = state
             .current_best_individual()
-            .map(|x| x.1)
+            .map(|x| x.value)
             // At 0 function evals there isn't a best individual yet, so assign it NAN and filter it
             // later
             .unwrap_or(f64::NAN);
@@ -77,9 +80,7 @@ impl PlotData {
         self.sigma.push(apply_offset(state.sigma()));
 
         let mut sqrt_eigenvalues = state.eigenvalues().map(|x| x.sqrt());
-        self.axis_ratio.push(apply_offset(
-            sqrt_eigenvalues.max() / sqrt_eigenvalues.min(),
-        ));
+        self.axis_ratio.push(apply_offset(state.axis_ratio()));
 
         let mean = state.mean();
         for (i, x) in mean.iter().enumerate() {
@@ -153,7 +154,7 @@ impl PlotOptions {
 /// Plots for each iteration the:
 /// - Distance from the minimum objective function value
 /// - Absolute objective function value
-/// - Maximum ratio between any two distribution axis scales
+/// - Distribution axis ratio
 /// - Distribution mean
 /// - Scaling of each distribution axis.
 /// - Standard deviation in each coordinate axis (without sigma)
@@ -186,12 +187,21 @@ impl Plot {
         self.last_data_point_evals = state.function_evals();
     }
 
-    /// Saves the data plot to a bitmap image file.
+    /// Saves the data plot to a bitmap image file. Recursively creates the necessary directories if
+    /// `create_dirs` is `true`.
     pub fn save_to_file<P: AsRef<Path>>(
         &self,
         path: P,
-    ) -> Result<(), DrawingAreaErrorKind<<Backend as DrawingBackend>::ErrorType>> {
-        let root_area = Backend::new(&path, (PLOT_WIDTH, PLOT_HEIGHT)).into_drawing_area();
+        create_dirs: bool,
+    ) -> Result<(), PlotError> {
+        let path = path.as_ref();
+        if create_dirs {
+            if let Some(parent) = path.parent() {
+                DirBuilder::new().recursive(true).create(parent)?;
+            }
+        }
+
+        let root_area = Backend::new(path, (PLOT_WIDTH, PLOT_HEIGHT)).into_drawing_area();
 
         root_area.fill(&colors::WHITE)?;
 
@@ -206,7 +216,7 @@ impl Plot {
         self.draw_sqrt_eigenvalues(&bottom_left)?;
         self.draw_coord_axis_scales(&bottom_right)?;
 
-        root_area.present()
+        root_area.present().map_err(|e| e.into())
     }
 
     /// Clears the plot data except for the most recent data point for each variable. Can be called
@@ -518,6 +528,43 @@ impl Plot {
         }
 
         Ok(())
+    }
+}
+
+/// An error produced while creating or saving a plot.
+#[derive(Debug)]
+pub enum PlotError<'a> {
+    DrawingError(DrawingError<'a>),
+    IoError(io::Error),
+}
+
+impl<'a> fmt::Display for PlotError<'a> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &PlotError::DrawingError(ref e) => write!(fmt, "DrawingError({})", e),
+            &PlotError::IoError(ref e) => write!(fmt, "IoError({})", e),
+        }
+    }
+}
+
+impl<'a> Error for PlotError<'a> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            &PlotError::DrawingError(ref e) => Some(e),
+            &PlotError::IoError(ref e) => Some(e),
+        }
+    }
+}
+
+impl<'a> From<DrawingError<'a>> for PlotError<'a> {
+    fn from(error: DrawingError<'a>) -> Self {
+        PlotError::DrawingError(error)
+    }
+}
+
+impl<'a> From<io::Error> for PlotError<'a> {
+    fn from(error: io::Error) -> Self {
+        PlotError::IoError(error)
     }
 }
 

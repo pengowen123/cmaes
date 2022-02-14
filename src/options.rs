@@ -57,6 +57,10 @@ pub struct CMAESOptions {
     /// Options for the data plot. Default value is `None`, meaning no plot will be generated. See
     /// [`Plot`].
     pub plot_options: Option<PlotOptions>,
+    /// How many function evaluations to wait for in between each automatic
+    /// [`CMAESState::print_info`] call. Default value is `None`, meaning no info will be
+    /// automatically printed.
+    pub print_gap_evals: Option<usize>,
 }
 
 impl CMAESOptions {
@@ -74,6 +78,7 @@ impl CMAESOptions {
             tol_x: None,
             seed: None,
             plot_options: None,
+            print_gap_evals: None,
         }
     }
 
@@ -135,6 +140,14 @@ impl CMAESOptions {
         self
     }
 
+    /// Enables automatic printing of various state variables of the algorithm. A minimum of
+    /// `min_gap_evals` function evaluations will be waited for between each
+    /// [`CMAESState::print_info`] call, but it will always be called for the first few generations.
+    pub fn enable_printing(mut self, min_gap_evals: usize) -> Self {
+        self.print_gap_evals = Some(min_gap_evals);
+        self
+    }
+
     /// Attempts to build the [`CMAESState`] using the chosen options.
     pub fn build<F: ObjectiveFunction + 'static>(
         self,
@@ -145,7 +158,7 @@ impl CMAESOptions {
 }
 
 /// The distribution of weights for the population. The default value is `Negative`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Weights {
     /// Weights are higher for higher-ranked selected individuals and are zero for the rest of the
     /// population.

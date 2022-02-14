@@ -19,6 +19,7 @@ fn main() {
         .initial_step_size(0.1)
         .initial_mean(vec![0.1; dim])
         .enable_plot(PlotOptions::new(0, false))
+        .enable_printing(200)
         .build(rosenbrock)
         .unwrap();
 
@@ -26,27 +27,19 @@ fn main() {
     let max_generations = 20000;
     let solution = cmaes_state.run(max_generations);
 
-    if let Some(data) = solution {
+    println!("Final mean has value {:e}", rosenbrock(cmaes_state.mean()));
+    if let Some(s) = solution {
         println!(
-            "Terminated after {} generations with termination reason `{:?}`",
-            cmaes_state.generation(),
-            data.reason,
-        );
-        println!(
-            "Best point has value {:e} and coordinates {:?}",
-            data.best_function_value,
-            data.best_individual.as_slice(),
-        );
-    } else {
-        let current_best = cmaes_state.current_best_individual().unwrap();
-
-        println!(
-            "Did not terminate after {} generations\nBest point has value {:e} and coordinates {:?}",
-            cmaes_state.generation(), current_best.1, current_best.0.as_slice(),
+            "Solution individual has value {:e} and point {}",
+            s.overall_best.value, s.overall_best.point,
         );
     }
 
     // Save the plot
     let plot = cmaes_state.get_plot().unwrap();
-    plot.save_to_file("plot.png").unwrap();
+    plot.save_to_file(
+        format!("{}/test_output/plot.png", env!("CARGO_MANIFEST_DIR")),
+        true,
+    )
+    .unwrap();
 }
