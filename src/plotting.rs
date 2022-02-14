@@ -181,10 +181,12 @@ impl Plot {
         self.last_data_point_evals + self.options.min_gap_evals
     }
 
-    /// Adds a data point to the plot from the current state
+    /// Adds a data point to the plot from the current state if not already called this generation.
     pub(crate) fn add_data_point(&mut self, state: &CMAESState) {
-        self.data.add_data_point(state);
-        self.last_data_point_evals = state.function_evals();
+        if self.last_data_point_evals != state.function_evals() {
+            self.data.add_data_point(state);
+            self.last_data_point_evals = state.function_evals();
+        }
     }
 
     /// Saves the data plot to a bitmap image file. Recursively creates the necessary directories if

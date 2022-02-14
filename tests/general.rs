@@ -113,8 +113,8 @@ fn test_rosenbrock() {
 fn test_rastrigin() {
     let function = |x: &DVector<f64>| {
         10.0 * x.len() as f64
-            + (0..x.len())
-                .map(|i| x[i].powi(2) - 10.0 * (2.0 * PI * x[i]).cos())
+            + x.iter()
+                .map(|xi| xi.powi(2) - 10.0 * (2.0 * PI * xi).cos())
                 .sum::<f64>()
     };
 

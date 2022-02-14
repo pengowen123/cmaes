@@ -15,11 +15,13 @@ pub mod options;
 pub mod plotting;
 mod utils;
 
+pub use nalgebra::DVector;
+
 pub use crate::objective_function::ObjectiveFunction;
 pub use crate::options::{CMAESOptions, Weights};
 pub use crate::plotting::PlotOptions;
 
-use nalgebra::{DMatrix, DVector};
+use nalgebra::DMatrix;
 use rand::distributions::Distribution;
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
@@ -905,8 +907,8 @@ impl CMAESState {
         };
     }
 
-    /// Adds a data point to the data plot if enabled. Can be called manually after termination to
-    /// plot the final state if [`CMAESState::run`] isn't used.
+    /// Adds a data point to the data plot if enabled and not already called this generation. Can be
+    /// called manually after termination to plot the final state if [`CMAESState::run`] isn't used.
     pub fn add_plot_point(&mut self) {
         // The plot is swapped out temporarily to avoid borrower issues
         if let Some(mut plot) = self.plot.take() {
