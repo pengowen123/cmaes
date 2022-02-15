@@ -860,6 +860,11 @@ impl<'a> CMAESState<'a> {
         None
     }
 
+    /// Consumes `self` and returns the objective function.
+    pub fn into_objective_function(self) -> Box<dyn ObjectiveFunction + 'a> {
+        self.objective_function
+    }
+
     /// Returns the parameters of the algorithm.
     pub fn parameters(&self) -> &Parameters {
         &self.parameters
