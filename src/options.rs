@@ -191,3 +191,29 @@ pub enum InvalidOptionsError {
     /// The learning rate is outside the valid range (`0.0` to `1.0`).
     Cm,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build() {
+        let dummy_function = |_: &DVector<f64>| 0.0;
+        assert!(CMAESOptions::new(5).build(dummy_function).is_ok());
+        assert!(CMAESOptions::new(5)
+            .population_size(3)
+            .build(dummy_function)
+            .is_err());
+        assert!(CMAESOptions::new(5)
+            .initial_step_size(-1.0)
+            .build(dummy_function)
+            .is_err());
+        assert!(CMAESOptions::new(5)
+            .initial_mean(vec![1.0; 2])
+            .build(dummy_function)
+            .is_err());
+        assert!(CMAESOptions::new(0).build(dummy_function).is_err());
+        assert!(CMAESOptions::new(0).cm(2.0).build(dummy_function).is_err());
+        assert!(CMAESOptions::new(0).cm(-1.0).build(dummy_function).is_err());
+    }
+}
