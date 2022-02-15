@@ -234,9 +234,35 @@ impl Parameters {
 
 /// Stores the iteration state of and runs the algorithm. Use [`CMAESOptions`] to create a
 /// `CMAESState`.
-pub struct CMAESState {
+///
+/// # Lifetimes
+///
+/// The objective function may be non-`'static` (i.e., it borrows something), so there is a lifetime
+/// parameter. If this functionality is not needed and the `CMAESState` type must be specified
+/// somewhere, the lifetime can simply be set to `'static` to avoid specifying lifetimes everywhere:
+///
+/// ```
+/// # use cmaes::CMAESState;
+/// struct Container(CMAESState<'static>);
+/// ```
+///
+/// In the case of a closure that references variables from its scope, the `move` keyword can be
+/// used to force a static lifetime:
+///
+/// ```
+/// # use cmaes::{CMAESOptions, CMAESState, DVector};
+/// # struct Container(CMAESState<'static>);
+/// let mut x = 0.0;
+/// let function = move |_: &DVector<f64>| {
+///     x += 1.0;
+///     x
+/// };
+/// let cmaes_state = CMAESOptions::new(2).build(function).unwrap();
+/// let container = Container(cmaes_state);
+/// ```
+pub struct CMAESState<'a> {
     /// The objective function to minimize
-    objective_function: Box<dyn ObjectiveFunction>,
+    objective_function: Box<dyn ObjectiveFunction + 'a>,
     /// Constant parameters, see [Parameters]
     parameters: Parameters,
     /// The number of generations that have been fully completed
@@ -281,11 +307,11 @@ pub struct CMAESState {
     last_print_evals: usize,
 }
 
-impl CMAESState {
+impl<'a> CMAESState<'a> {
     /// Initializes a `CMAESState` from a set of [`CMAESOptions`]. [`CMAESOptions::build`] should
     /// generally be used instead.
     pub fn new(
-        objective_function: Box<dyn ObjectiveFunction>,
+        objective_function: Box<dyn ObjectiveFunction + 'a>,
         options: CMAESOptions,
     ) -> Result<Self, InvalidOptionsError> {
         // Check for invalid options

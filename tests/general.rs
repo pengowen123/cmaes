@@ -1,7 +1,7 @@
 //! General tests
 
 use assert_approx_eq::assert_approx_eq;
-use cmaes::{CMAESOptions, ObjectiveFunction, Weights};
+use cmaes::{CMAESOptions, CMAESState, ObjectiveFunction, Weights};
 use nalgebra::DVector;
 
 use std::collections::HashMap;
@@ -54,7 +54,7 @@ fn run_test<F: ObjectiveFunction + Clone + 'static>(
         failures,
     );
     assert!(avg_evals < max_avg_evals);
-    assert!(highest_evals < (max_avg_evals as f64 * 1.5) as usize);
+    assert!(highest_evals < max_avg_evals * 2);
 }
 
 #[test]
@@ -255,6 +255,36 @@ fn test_fixed_seed() {
     }
 
     assert_approx_eq!(overall_best.value, 2.210750747950352, eps);
+}
+
+// Checks that certain usage patterns work
+#[test]
+#[ignore]
+fn test_api_usage() {
+    // Non-static objective function (references something or is a reference)
+    let mut x = 0.0;
+    let mut non_static_function = |_: &DVector<f64>| {
+        x += 1.0;
+        x
+    };
+
+    let _ = CMAESOptions::new(5).build(&mut non_static_function).unwrap();
+    let non_static_state  = CMAESOptions::new(5).build(non_static_function).unwrap();
+
+    // Storing a CMAESState with a static objective function without dealing with lifetimes
+    struct StaticContainer(CMAESState<'static>);
+
+    let static_function = |x: &DVector<f64>| x.magnitude();
+
+    let static_state  = CMAESOptions::new(5).build(static_function).unwrap();
+    StaticContainer(static_state);
+
+    // Storing a CMAESState with any lifetime
+    struct NonStaticContainer<'a>(CMAESState<'a>);
+    NonStaticContainer(non_static_state);
+
+    let static_state  = CMAESOptions::new(5).build(static_function).unwrap();
+    NonStaticContainer(static_state);
 }
 
 // N-dimensional sphere function
