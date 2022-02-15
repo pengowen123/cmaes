@@ -267,22 +267,24 @@ fn test_api_usage() {
         x
     };
 
-    let _ = CMAESOptions::new(5).build(&mut non_static_function).unwrap();
-    let non_static_state  = CMAESOptions::new(5).build(non_static_function).unwrap();
+    let _ = CMAESOptions::new(5)
+        .build(&mut non_static_function)
+        .unwrap();
+    let non_static_state = CMAESOptions::new(5).build(non_static_function).unwrap();
 
     // Storing a CMAESState with a static objective function without dealing with lifetimes
     struct StaticContainer(CMAESState<'static>);
 
     let static_function = |x: &DVector<f64>| x.magnitude();
 
-    let static_state  = CMAESOptions::new(5).build(static_function).unwrap();
+    let static_state = CMAESOptions::new(5).build(static_function).unwrap();
     StaticContainer(static_state);
 
     // Storing a CMAESState with any lifetime
     struct NonStaticContainer<'a>(CMAESState<'a>);
     NonStaticContainer(non_static_state);
 
-    let static_state  = CMAESOptions::new(5).build(static_function).unwrap();
+    let static_state = CMAESOptions::new(5).build(static_function).unwrap();
     NonStaticContainer(static_state);
 }
 

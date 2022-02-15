@@ -1,22 +1,23 @@
-//! Types related to initializing a [CMAESState]. See [CMAESOptions] for full documentation.
+//! Types related to initializing a [`CMAESState`]. See [`CMAESOptions`] for full documentation.
 
 use nalgebra::DVector;
 
 use crate::{CMAESState, ObjectiveFunction, PlotOptions};
 
 /// A builder for [`CMAESState`]. Used to adjust parameters of the algorithm to each particular
-/// problem.
+/// problem and to change other options. See the fields and methods for a full list of options.
 ///
 /// # Examples
 ///
 /// ```
-/// # use nalgebra::DVector;
-/// # use cmaes::CMAESOptions;
+/// # use cmaes::{CMAESOptions, DVector, PlotOptions};
 /// let function = |x: &DVector<f64>| x.magnitude();
 /// let dim = 3;
-/// let cmaes_state = CMAESOptions::new(dim)
+/// let mut cmaes_state = CMAESOptions::new(dim)
 ///     .initial_mean(vec![2.0; dim])
 ///     .initial_step_size(5.0)
+///     .enable_plot(PlotOptions::new(0, false))
+///     .enable_printing(200)
 ///     .build(function)
 ///     .unwrap();
 /// ```
@@ -33,29 +34,30 @@ pub struct CMAESOptions {
     /// Number of points to generate each generation (`lambda`). Default value is
     /// `4 + floor(3 * ln(dimensions))`.
     ///
-    /// A larger population size will increase the robustness of the algorithm and help avoid local optima,
-    /// but will lead to a slower convergence rate. Conversely, a lower value will reduce the robustness of
-    /// the algorithm but will lead to a higher convergence rate. Generally, the population size should only
-    /// be increased from the default value. It may be useful to restart the algorithm repeatedly
-    /// with increasing population sizes.
+    /// A larger population size will increase the robustness of the algorithm and help avoid
+    /// converging to local optima, but will lead to a slower convergence rate. Conversely, a lower
+    /// value will reduce the robustness of the algorithm but will lead to a higher convergence
+    /// rate. Generally, the population size should only be left at the default value or increased.
+    /// It is generally useful to restart the algorithm repeatedly with increasing population sizes.
     pub population_size: usize,
     /// The distribution to use when assigning weights to individuals. Default value is
-    /// `Weights::Negative`.
+    /// [`Weights::Negative`].
     pub weights: Weights,
-    /// The learning rate for adapting the mean. Can be set lower than `1.0` for noisy functions.
-    /// Default value is `1.0`.
+    /// The learning rate for adapting the mean. Can be reduced for noisy functions. Default value
+    /// is `1.0`.
     pub cm: f64,
-    /// The value to use for the [`TerminationReason::TolFun`] termination criterion. Default value
-    /// is `1e-12`.
+    /// The value to use for the [`TerminationReason::TolFun`][crate::TerminationReason::TolFun]
+    /// termination criterion. Default value is `1e-12`.
     pub tol_fun: f64,
-    /// The value to use for the [`TerminationReason::TolX`] termination criterion. Default value is
-    /// `1e-12 * initial_step_size`, used if this field is `None`.
+    /// The value to use for the [`TerminationReason::TolX`][crate::TerminationReason::TolX]
+    /// termination criterion. Default value is `1e-12 * initial_step_size`, used if this field is
+    /// `None`.
     pub tol_x: Option<f64>,
     /// The seed for the RNG used in the algorithm. Can be set manually for deterministic runs. By
     /// default a random seed is used if this field is `None`.
     pub seed: Option<u64>,
     /// Options for the data plot. Default value is `None`, meaning no plot will be generated. See
-    /// [`Plot`].
+    /// [`Plot`][crate::plotting::Plot].
     pub plot_options: Option<PlotOptions>,
     /// How many function evaluations to wait for in between each automatic
     /// [`CMAESState::print_info`] call. Default value is `None`, meaning no info will be
@@ -115,14 +117,14 @@ impl CMAESOptions {
     }
 
     /// Changes the value for the `TolFun` termination criterion from the default value (see
-    /// [`TerminationReason`][crate::TerminationReason]).
+    /// [`TerminationReason::TolFun`][crate::TerminationReason::TolFun]).
     pub fn tol_fun(mut self, tol_fun: f64) -> Self {
         self.tol_fun = tol_fun;
         self
     }
 
     /// Changes the value for the `TolX` termination criterion from the default value (see
-    /// [`TerminationReason`][crate::TerminationReason]).
+    /// [`TerminationReason::TolX`][crate::TerminationReason::TolX]).
     pub fn tol_x(mut self, tol_x: f64) -> Self {
         self.tol_x = Some(tol_x);
         self
@@ -134,7 +136,8 @@ impl CMAESOptions {
         self
     }
 
-    /// Enables recording of a data plot for various state variables of the algorithm. See [`Plot`].
+    /// Enables recording of a data plot for various state variables of the algorithm. See
+    /// [`Plot`][crate::plotting::Plot].
     pub fn enable_plot(mut self, plot_options: PlotOptions) -> Self {
         self.plot_options = Some(plot_options);
         self
@@ -162,7 +165,7 @@ impl CMAESOptions {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Weights {
     /// Weights are higher for higher-ranked selected individuals and are zero for the rest of the
-    /// population.
+    /// population. Usually performs slightly worse than `Negative`.
     Positive,
     /// Similar to `Positive`, but non-selected individuals have negative weights. With this
     /// setting, the algorithm is known as active CMA-ES or aCMA-ES.
@@ -187,7 +190,7 @@ pub enum InvalidOptionsError {
     MeanDimensionMismatch,
     /// The population size is too small (must be at least 4).
     PopulationSize,
-    /// The initial step size is non-positive.
+    /// The initial step size is negative or non-normal.
     InitialStepSize,
     /// The learning rate is outside the valid range (`0.0` to `1.0`).
     Cm,
@@ -201,20 +204,63 @@ mod tests {
     fn test_build() {
         let dummy_function = |_: &DVector<f64>| 0.0;
         assert!(CMAESOptions::new(5).build(dummy_function).is_ok());
-        assert!(CMAESOptions::new(5)
-            .population_size(3)
-            .build(dummy_function)
-            .is_err());
-        assert!(CMAESOptions::new(5)
-            .initial_step_size(-1.0)
-            .build(dummy_function)
-            .is_err());
-        assert!(CMAESOptions::new(5)
-            .initial_mean(vec![1.0; 2])
-            .build(dummy_function)
-            .is_err());
-        assert!(CMAESOptions::new(0).build(dummy_function).is_err());
-        assert!(CMAESOptions::new(0).cm(2.0).build(dummy_function).is_err());
-        assert!(CMAESOptions::new(0).cm(-1.0).build(dummy_function).is_err());
+        assert!(matches!(
+            CMAESOptions::new(5)
+                .population_size(3)
+                .build(dummy_function),
+
+            Err(InvalidOptionsError::PopulationSize),
+        ));
+        assert!(matches!(
+            CMAESOptions::new(5)
+                .initial_step_size(-1.0)
+                .build(dummy_function),
+
+            Err(InvalidOptionsError::InitialStepSize),
+        ));
+        assert!(matches!(
+            CMAESOptions::new(5)
+                .initial_step_size(f64::NAN)
+                .build(dummy_function),
+
+            Err(InvalidOptionsError::InitialStepSize),
+        ));
+        assert!(matches!(
+            CMAESOptions::new(5)
+                .initial_step_size(f64::INFINITY)
+                .build(dummy_function),
+
+            Err(InvalidOptionsError::InitialStepSize),
+        ));
+        assert!(matches!(
+            CMAESOptions::new(5)
+                .initial_mean(vec![1.0; 2])
+                .build(dummy_function),
+            Err(InvalidOptionsError::MeanDimensionMismatch),
+        ));
+        assert!(matches!(
+            CMAESOptions::new(0).build(dummy_function),
+            Err(InvalidOptionsError::Dimensions),
+        ));
+        assert!(matches!(
+            CMAESOptions::new(5).cm(2.0).build(dummy_function),
+            Err(InvalidOptionsError::Cm),
+        ));
+        assert!(matches!(
+            CMAESOptions::new(5).cm(-1.0).build(dummy_function),
+            Err(InvalidOptionsError::Cm),
+        ));
+        assert!(matches!(
+            CMAESOptions::new(5)
+                .cm(f64::NAN)
+                .build(dummy_function),
+            Err(InvalidOptionsError::Cm),
+        ));
+        assert!(matches!(
+            CMAESOptions::new(5)
+                .cm(f64::INFINITY)
+                .build(dummy_function),
+            Err(InvalidOptionsError::Cm),
+        ));
     }
 }

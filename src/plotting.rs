@@ -1,6 +1,4 @@
 //! Types for plotting support. See [`Plot`] for usage and what is plotted.
-//!
-//! TODO: example
 
 use plotters::chart::{ChartBuilder, ChartContext, SeriesAnno, SeriesLabelPosition};
 use plotters::coord;
@@ -29,9 +27,9 @@ pub type Backend<'a> = BitMapBackend<'a>;
 /// The error type returned by drawing functions.
 pub type DrawingError<'a> = DrawingAreaErrorKind<<Backend<'a> as DrawingBackend>::ErrorType>;
 
-/// Height of plot images in pixels.
+/// The height of plot images in pixels.
 pub const PLOT_HEIGHT: u32 = 1200;
-/// Widthof plot images in pixels.
+/// The width of plot images in pixels.
 pub const PLOT_WIDTH: u32 = 1200;
 
 /// The font to use for text in the plot
@@ -150,8 +148,10 @@ impl PlotOptions {
     }
 }
 
-/// Data plot for the algorithm. Can be obtained by calling [`CMAESState::get_plot`] and should be
-/// saved with [`Plot::save_to_file`]. Configuration is done by creating a [`PlotOptions`].
+/// Data plot for the algorithm. Can be obtained by calling [`CMAESState::get_plot`] or
+/// [`CMAESState::get_mut_plot`] and should be saved with [`save_to_file`][`Self::save_to_file`].
+/// Configuration is done using [`PlotOptions`]. To enable the plot, use
+/// [`CMAESOptions::enable_plot`][crate::CMAESOptions::enable_plot].
 ///
 /// Plots for each iteration the:
 /// - Distance from the minimum objective function value
@@ -160,6 +160,22 @@ impl PlotOptions {
 /// - Distribution mean
 /// - Scaling of each distribution axis.
 /// - Standard deviation in each coordinate axis (without sigma)
+///
+/// # Examples
+///
+/// ```no_run
+/// use cmaes::{CMAESOptions, DVector, PlotOptions};
+///
+/// let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
+/// let mut cmaes_state = CMAESOptions::new(10)
+///     .enable_plot(PlotOptions::new(0, false))
+///     .build(sphere)
+///     .unwrap();
+///
+/// let result = cmaes_state.run(20000);
+///
+/// cmaes_state.get_plot().unwrap().save_to_file("plot.png", true).unwrap();
+/// ```
 #[derive(Clone, Debug)]
 pub struct Plot {
     data: PlotData,
@@ -241,7 +257,8 @@ impl Plot {
     }
 
     /// Clears the plot data except for the most recent data point for each variable. Can be called
-    /// after using [`Plot::save_to_file`] (or not) to avoid endlessly growing allocations.
+    /// after using [`save_to_file`][`Plot::save_to_file`] (or not) to avoid endlessly growing
+    /// allocations.
     pub fn clear(&mut self) {
         self.data.clear();
     }
@@ -692,10 +709,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_plot_not_enabled() {
         let cmaes_state = CMAESOptions::new(10).build(|_: &DVector<f64>| 0.0).unwrap();
-        let _ = cmaes_state.get_plot().unwrap();
+        assert!(cmaes_state.get_plot().is_none());
     }
 
     #[test]
@@ -705,8 +721,9 @@ mod tests {
             .build(|_: &DVector<f64>| 0.0)
             .unwrap();
         let plot = cmaes_state.get_plot().unwrap();
-        plot.save_to_file(get_plot_path("test_plot_empty"), true)
-            .unwrap();
+        assert!(plot
+            .save_to_file(get_plot_path("test_plot_empty"), true)
+            .is_ok())
     }
 
     #[test]
@@ -721,7 +738,7 @@ mod tests {
         }
 
         let plot = cmaes_state.get_plot().unwrap();
-        plot.save_to_file(get_plot_path("test_plot"), true).unwrap();
+        assert!(plot.save_to_file(get_plot_path("test_plot"), true).is_ok());
     }
 
     #[test]
@@ -740,6 +757,8 @@ mod tests {
         cmaes_state.get_mut_plot().unwrap().clear();
 
         let plot = cmaes_state.get_plot().unwrap();
-        plot.save_to_file(get_plot_path("test_plot_clear"), true).unwrap();
+        assert!(plot
+            .save_to_file(get_plot_path("test_plot_clear"), true)
+            .is_ok());
     }
 }

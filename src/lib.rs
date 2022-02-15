@@ -1,11 +1,34 @@
 //! An implementation of the CMA-ES optimization algorithm. It is used to minimize the value of an
-//! objective function, and performs well on high-dimension, non-linear, non-convex,
-//! ill-conditioned, and/or noisy problems.
+//! objective function and performs well on high-dimension, non-linear, non-convex, ill-conditioned,
+//! and/or noisy problems.
 //!
-//! // TODO: example
+//! # Quick Start
 //!
-//! See [this paper][0] for details on the algorithm itself. Based on the paper and the [pycma][1]
-//! implementation.
+//! To optimize a function, simply create and build a [`CMAESOptions`] and call
+//! [`CMAESState::run`]. Customization of algorithm parameters should be done on a per-problem basis using
+//! [`CMAESOptions`]. See [`Plot`] for generation of data plots.
+//!
+//! ```no_run
+//! use cmaes::{CMAESOptions, DVector};
+//!
+//! let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
+//!
+//! let dim = 10;
+//! let mut cmaes_state = CMAESOptions::new(dim)
+//!     .initial_mean(vec![1.0; dim])
+//!     .enable_printing(200)
+//!     .build(sphere)
+//!     .unwrap();
+//!
+//! let max_generations = 20000;
+//! let result = cmaes_state.run(max_generations);
+//! ```
+//!
+//! The [`ObjectiveFunction`] trait allows for custom objective function types to store state and
+//! parameters, and the [`CMAESState::next`] method provides finer control over iteration if needed.
+//!
+//! See [this paper][0] for details on the algorithm itself. This library is based on the linked
+//! paper and the [pycma][1] implementation.
 //!
 //! [0]: https://arxiv.org/pdf/1604.00772.pdf
 //! [1]: https://github.com/CMA-ES/pycma
@@ -239,7 +262,7 @@ impl Parameters {
 ///
 /// The objective function may be non-`'static` (i.e., it borrows something), so there is a lifetime
 /// parameter. If this functionality is not needed and the `CMAESState` type must be specified
-/// somewhere, the lifetime can simply be set to `'static` to avoid specifying lifetimes everywhere:
+/// somewhere, the lifetime can simply be set to `'static`:
 ///
 /// ```
 /// # use cmaes::CMAESState;
@@ -327,11 +350,11 @@ impl<'a> CMAESState<'a> {
             return Err(InvalidOptionsError::PopulationSize);
         }
 
-        if options.initial_step_size <= 0.0 {
+        if !options.initial_step_size.is_normal() || options.initial_step_size <= 0.0 {
             return Err(InvalidOptionsError::InitialStepSize);
         }
 
-        if options.cm <= 0.0 || options.cm > 1.0 {
+        if !options.cm.is_normal() || options.cm <= 0.0 || options.cm > 1.0 {
             return Err(InvalidOptionsError::Cm);
         }
 
@@ -472,7 +495,7 @@ impl<'a> CMAESState<'a> {
 
     /// Iterates the algorithm until termination or until `max_generations` is reached. If no
     /// termination criteria are met before `max_generations` is reached, `None` will be returned.
-    /// [`Self::next`] can be called manually if more control over termination is needed
+    /// [`next`][Self::next] can be called manually if more control over termination is needed
     /// (plotting/printing the final state must be done manually as well in this case).
     pub fn run(&mut self, max_generations: usize) -> Option<TerminationData> {
         let mut result = None;
@@ -559,7 +582,9 @@ impl<'a> CMAESState<'a> {
     }
 
     /// Advances to the next generation. Returns `Some` if a termination condition has been reached
-    /// and the algorithm should be stopped.
+    /// and the algorithm should be stopped. [`run`][Self::run] is generally easier to use, but
+    /// iteration can be performed manually if finer control is needed (plotting/printing the final
+    /// state must be done manually as well in this case).
     #[must_use]
     pub fn next(&mut self) -> Option<TerminationData> {
         // How many generations to store in self.best_function_values and
@@ -671,7 +696,8 @@ impl<'a> CMAESState<'a> {
 
         // Plot latest state
         if let Some(ref plot) = self.plot {
-            if self.function_evals >= plot.get_next_data_point_evals() {
+            // Always plot the first generation
+            if self.generation <= 1 || self.function_evals >= plot.get_next_data_point_evals() {
                 self.add_plot_point();
             }
         }
@@ -907,13 +933,13 @@ impl<'a> CMAESState<'a> {
     }
 
     /// Returns the best individual of the latest generation and its function value. Will always
-    /// return `Some` as long as [`Self::next`] has been called at least once.
+    /// return `Some` as long as [`next`][Self::next] has been called at least once.
     pub fn current_best_individual(&self) -> Option<&Individual> {
         self.current_best_individual.as_ref()
     }
 
     /// Returns the best individual of any generation and its function value. Will always return
-    /// `Some` as long as [`Self::next`] has been called at least once.
+    /// `Some` as long as [`next`][Self::next] has been called at least once.
     pub fn overall_best_individual(&self) -> Option<&Individual> {
         self.overall_best_individual.as_ref()
     }
@@ -939,7 +965,7 @@ impl<'a> CMAESState<'a> {
     }
 
     /// Adds a data point to the data plot if enabled and not already called this generation. Can be
-    /// called manually after termination to plot the final state if [`CMAESState::run`] isn't used.
+    /// called manually after termination to plot the final state if [`run`][Self::run] isn't used.
     pub fn add_plot_point(&mut self) {
         // The plot is swapped out temporarily to avoid borrower issues
         if let Some(mut plot) = self.plot.take() {
@@ -949,14 +975,14 @@ impl<'a> CMAESState<'a> {
     }
 
     /// Prints various initial parameters of the algorithm as well as the headers for the columns
-    /// printed by [`CMAESState::print_info`]. The parameters that are printed are the:
+    /// printed by [`print_info`][Self::print_info]. The parameters that are printed are the:
     ///
     /// - Algorithm variant (based on the [`Weights`] setting)
     /// - Dimension (N)
     /// - Population size (lambda)
     /// - Seed
     ///
-    /// This function is automatically called if [`CMAESOptions::enable_printing`] is set.
+    /// This function is called automatically if [`CMAESOptions::enable_printing`] is set.
     pub fn print_initial_info(&self) {
         let params = &self.parameters;
         let variant = match params.weights_setting {
@@ -991,7 +1017,7 @@ impl<'a> CMAESState<'a> {
     /// - Overall standard deviation (sigma)
     /// - Minimum and maximum standard deviations in the coordinate axes
     ///
-    /// This function is automatically called if [`CMAESOptions::enable_printing`] is set.
+    /// This function is called automatically if [`CMAESOptions::enable_printing`] is set.
     pub fn print_info(&self) {
         let generations = format!("{:7}", self.generation);
         let evals = format!("{:7}", self.function_evals);
@@ -1013,11 +1039,16 @@ impl<'a> CMAESState<'a> {
         );
     }
 
-    /// Calls [`CMAESState::print_info`] if not already called automatically this generation and
-    /// prints the results.
+    /// Calls [`print_info`][Self::print_info] if not already called automatically this generation
+    /// and prints the results. The values that are printed are the:
     ///
-    /// This function is automatically called if [`CMAESOptions::enable_printing`] is set. Must be
-    /// called manually after termination to print the final state if [`CMAESState::run`] isn't
+    /// - Termination reason if given
+    /// - Best function value of the latest generation
+    /// - Best function value of any generation
+    /// - Final distribution mean
+    ///
+    /// This function is called automatically if [`CMAESOptions::enable_printing`] is set. Must be
+    /// called manually after termination to print the final state if [`run`][`Self::run`] isn't
     /// used.
     pub fn print_final_info(&self, termination_reason: Option<TerminationReason>) {
         if self.function_evals != self.last_print_evals {
