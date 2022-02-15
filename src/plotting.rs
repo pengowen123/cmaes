@@ -103,11 +103,13 @@ impl PlotData {
     /// Clears the plot except for the most recent data point in each history.
     fn clear(&mut self) {
         let clear = |data: &mut Vec<_>| {
-            data[0] = data.pop().unwrap();
+            let len = data.len();
+            data.swap(0, len - 1);
             data.truncate(1);
         };
 
-        self.function_evals[0] = self.function_evals.pop().unwrap();
+        let len = self.function_evals.len();
+        self.function_evals.swap(0, len - 1);
         self.function_evals.truncate(1);
 
         clear(&mut self.best_function_value);
@@ -728,6 +730,8 @@ mod tests {
             .enable_plot(PlotOptions::new(0, false))
             .build(|_: &DVector<f64>| 0.0)
             .unwrap();
+
+        cmaes_state.get_mut_plot().unwrap().clear();
 
         for _ in 0..10 {
             let _ = cmaes_state.next();

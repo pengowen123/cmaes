@@ -259,7 +259,6 @@ fn test_fixed_seed() {
 
 // Checks that certain usage patterns work
 #[test]
-#[ignore]
 fn test_api_usage() {
     // Non-static objective function (references something or is a reference)
     let mut x = 0.0;
