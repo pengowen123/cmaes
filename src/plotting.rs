@@ -163,7 +163,8 @@ pub struct Plot {
     data: PlotData,
     options: PlotOptions,
     /// The last time a data point was recorded, in function evals
-    last_data_point_evals: usize,
+    /// Is None if no data points have been recorded yet
+    last_data_point_evals: Option<usize>,
 }
 
 impl Plot {
@@ -172,20 +173,27 @@ impl Plot {
         Self {
             data: PlotData::new(dimensions),
             options,
-            last_data_point_evals: 0,
+            last_data_point_evals: None,
         }
     }
 
     /// Returns the next time a data point should be recorded, in function evals.
     pub(crate) fn get_next_data_point_evals(&self) -> usize {
-        self.last_data_point_evals + self.options.min_gap_evals
+        match self.last_data_point_evals {
+            Some(evals) => evals + self.options.min_gap_evals,
+            None => 0,
+        }
     }
 
     /// Adds a data point to the plot from the current state if not already called this generation.
     pub(crate) fn add_data_point(&mut self, state: &CMAESState) {
-        if self.last_data_point_evals != state.function_evals() {
+        let already_added = match self.last_data_point_evals {
+            Some(evals) => evals == state.function_evals(),
+            None => false,
+        };
+        if !already_added {
             self.data.add_data_point(state);
-            self.last_data_point_evals = state.function_evals();
+            self.last_data_point_evals = Some(state.function_evals());
         }
     }
 
@@ -203,6 +211,15 @@ impl Plot {
             }
         }
 
+        let plot = self.build_plot(&path)?;
+        plot.present().map_err(Into::into)
+    }
+
+    /// Builds the data plot and returns it (does not save to a file)
+    fn build_plot<'a, P: AsRef<Path> + 'a>(
+        &self,
+        path: &'a P,
+    ) -> Result<DrawingArea<Backend<'a>, coord::Shift>, DrawingError> {
         let root_area = Backend::new(path, (PLOT_WIDTH, PLOT_HEIGHT)).into_drawing_area();
 
         root_area.fill(&colors::WHITE)?;
@@ -218,7 +235,7 @@ impl Plot {
         self.draw_sqrt_eigenvalues(&bottom_left)?;
         self.draw_coord_axis_scales(&bottom_right)?;
 
-        root_area.present().map_err(|e| e.into())
+        Ok(root_area)
     }
 
     /// Clears the plot data except for the most recent data point for each variable. Can be called
@@ -237,9 +254,10 @@ impl Plot {
             .data
             .best_function_value
             .iter()
+            .cloned()
             .enumerate()
             .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Greater))
-            .unwrap();
+            .unwrap_or((0, 0.0));
 
         // The number of times the minimum function value appears, used to decide whether to include
         // it in the plot
@@ -247,7 +265,7 @@ impl Plot {
             .data
             .best_function_value
             .iter()
-            .filter(|y| *y == min_function_value)
+            .filter(|y| **y == min_function_value)
             .count();
 
         // Transform from f to f - min(f)
@@ -267,7 +285,7 @@ impl Plot {
             // range only in that case
             .filter(|&(i, y)| !y.is_nan() && (min_count > 1 || i != min_index))
             .map(|(_, y)| y)
-            .chain(abs_best_value.clone())
+            .chain(abs_best_value.clone().filter(|y| !y.is_nan()))
             .chain(self.data.sigma.iter().cloned())
             .chain(self.data.axis_ratio.iter().cloned());
         let (y_range, num_y_labels) = get_log_range(all_y_values);
@@ -646,7 +664,11 @@ fn get_range<I: Iterator<Item = f64> + Clone>(iter: I) -> (Range<f64>, usize) {
     let mut margin = (max - min) * 0.15;
 
     if margin == 0.0 {
-        margin = max * 0.15;
+        if max == 0.0 {
+            margin = 0.15;
+        } else {
+            margin = max * 0.15;
+        }
     }
 
     min -= margin;
@@ -654,4 +676,66 @@ fn get_range<I: Iterator<Item = f64> + Clone>(iter: I) -> (Range<f64>, usize) {
 
     let num_labels = 26;
     (min..max, num_labels)
+}
+
+#[cfg(test)]
+mod tests {
+    use nalgebra::DVector;
+
+    use super::*;
+    use crate::CMAESOptions;
+
+    fn get_plot_path(name: &str) -> String {
+        format!("{}/test_output/{}.png", env!("CARGO_MANIFEST_DIR"), name)
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_plot_not_enabled() {
+        let cmaes_state = CMAESOptions::new(10).build(|_: &DVector<f64>| 0.0).unwrap();
+        let _ = cmaes_state.get_plot().unwrap();
+    }
+
+    #[test]
+    fn test_plot_empty() {
+        let cmaes_state = CMAESOptions::new(10)
+            .enable_plot(PlotOptions::new(0, false))
+            .build(|_: &DVector<f64>| 0.0)
+            .unwrap();
+        let plot = cmaes_state.get_plot().unwrap();
+        plot.save_to_file(get_plot_path("test_plot_empty"), true)
+            .unwrap();
+    }
+
+    #[test]
+    fn test_plot() {
+        let mut cmaes_state = CMAESOptions::new(10)
+            .enable_plot(PlotOptions::new(0, false))
+            .build(|_: &DVector<f64>| 0.0)
+            .unwrap();
+
+        for _ in 0..10 {
+            let _ = cmaes_state.next();
+        }
+
+        let plot = cmaes_state.get_plot().unwrap();
+        plot.save_to_file(get_plot_path("test_plot"), true).unwrap();
+    }
+
+    #[test]
+    fn test_plot_clear() {
+        let mut cmaes_state = CMAESOptions::new(10)
+            .enable_plot(PlotOptions::new(0, false))
+            .build(|_: &DVector<f64>| 0.0)
+            .unwrap();
+
+        for _ in 0..10 {
+            let _ = cmaes_state.next();
+        }
+
+        cmaes_state.get_mut_plot().unwrap().clear();
+
+        let plot = cmaes_state.get_plot().unwrap();
+        plot.save_to_file(get_plot_path("test_plot_clear"), true).unwrap();
+    }
 }

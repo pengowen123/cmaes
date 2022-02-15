@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use cmaes::{CMAESOptions, PlotOptions, Weights, DVector};
+use cmaes::{CMAESOptions, DVector, PlotOptions, Weights};
 use rand;
 
 use std::f64::consts::PI;

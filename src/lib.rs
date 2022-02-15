@@ -29,8 +29,8 @@ use statrs::distribution::Normal;
 use statrs::statistics::{Data, Median};
 
 use std::collections::VecDeque;
-use std::{f64, iter};
 use std::fmt::{self, Debug};
+use std::{f64, iter};
 
 use crate::options::InvalidOptionsError;
 use crate::plotting::Plot;

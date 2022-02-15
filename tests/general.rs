@@ -50,7 +50,8 @@ fn run_test<F: ObjectiveFunction + Clone + 'static>(
     assert!(
         failures.len() <= max_failures,
         "max failures exceeded: {}, {:?}",
-        failures.len(), failures,
+        failures.len(),
+        failures,
     );
     assert!(avg_evals < max_avg_evals);
     assert!(highest_evals < (max_avg_evals as f64 * 1.5) as usize);
@@ -70,8 +71,8 @@ fn test_sphere() {
 
     run_test_sphere(3, 1, 700, 0, Weights::Negative);
     run_test_sphere(10, 1, 2140, 0, Weights::Negative);
-    run_test_sphere(10, 10, 9960, 0, Weights::Negative);
-    run_test_sphere(10, 10, 10100, 0, Weights::Positive);
+    run_test_sphere(10, 10, 10000, 0, Weights::Negative);
+    run_test_sphere(10, 10, 10200, 0, Weights::Positive);
     run_test_sphere(30, 1, 5730, 0, Weights::Negative);
 }
 
