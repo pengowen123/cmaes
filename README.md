@@ -33,9 +33,12 @@ cmaes_state.get_plot().unwrap().save_to_file("plot.png", true).unwrap();
 
 The produced plot will look like this:
 
-[sphere function plot][2]
+<a href="https://github.com/pengowen123/cmaes/tree/master/images/plot_sphere.png">
+    <img src="https://pengowen123.github.io/cmaes/images/plot_sphere.png"
+        width=750 height=750 />
+</a>
 
-For more information, see the [documentation][3] and [examples][4].
+For more information, see the [documentation][2] and [examples][3].
 
 # Contributing
 
@@ -47,15 +50,12 @@ Unless you explicitly state otherwise, any contribution intentionally submitted 
 
 Licensed under either of
 
-    Apache License, Version 2.0, ([LICENSE-APACHE][5] or http://www.apache.org/licenses/LICENSE-2.0)
-    MIT license ([LICENSE-MIT][6] or http://opensource.org/licenses/MIT)
+    Apache License, Version 2.0, (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0)
+    MIT license (LICENSE-MIT or http://opensource.org/licenses/MIT)
 
 at your option.
 
 [0]: https://arxiv.org/pdf/1604.00772.pdf
 [1]: https://github.com/CMA-ES/pycma
-[2]: https://github.com/pengowen123/cmaes/tree/master/images/plot_sphere.png
-[3]: https://docs.rs/cmaes/latest/cmaes
-[4]: https://github.com/pengowen123/cmaes/tree/master/examples
-[5]: https://github.com/pengowen123/cmaes/tree/master/LICENSE-APACHE
-[6]: https://github.com/pengowen123/cmaes/tree/master/LICENSE-MIT
+[2]: https://docs.rs/cmaes/latest/cmaes
+[3]: https://github.com/pengowen123/cmaes/tree/master/examples
