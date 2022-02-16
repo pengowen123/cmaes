@@ -176,6 +176,13 @@ impl PlotOptions {
 ///
 /// cmaes_state.get_plot().unwrap().save_to_file("plot.png", true).unwrap();
 /// ```
+///
+/// The produced plot wil look like this:
+///
+/// <a href="https://pengowen123.github.io/cmaes/images/plot_sphere.png">
+///     <img src="https://pengowen123.github.io/cmaes/images/plot_sphere.png"
+///         width=750 height=750 />
+/// </a>
 #[derive(Clone, Debug)]
 pub struct Plot {
     data: PlotData,
