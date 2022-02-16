@@ -2,6 +2,11 @@
 name = "cmaes"
 version = "0.1.0"
 edition = "2021"
+description = "An implementation of the CMA-ES optimization algorithm."
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/cmaes"
+repository = "https://github.com/pengowen123/cmaes"
 
 [dependencies]
 rand = "0.8.4"

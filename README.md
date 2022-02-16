@@ -4,7 +4,7 @@ A Rust implementation of the CMA-ES optimization algorithm. It is used to minimi
 
 # Quick Start
 
-A LAPACK implementation and Rust 1.57 or later must be installed.
+A LAPACK implementation, FreeType, and Rust 1.57 or later must be installed.
 
 Add this to your Cargo.toml:
 

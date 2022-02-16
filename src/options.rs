@@ -208,28 +208,24 @@ mod tests {
             CMAESOptions::new(5)
                 .population_size(3)
                 .build(dummy_function),
-
             Err(InvalidOptionsError::PopulationSize),
         ));
         assert!(matches!(
             CMAESOptions::new(5)
                 .initial_step_size(-1.0)
                 .build(dummy_function),
-
             Err(InvalidOptionsError::InitialStepSize),
         ));
         assert!(matches!(
             CMAESOptions::new(5)
                 .initial_step_size(f64::NAN)
                 .build(dummy_function),
-
             Err(InvalidOptionsError::InitialStepSize),
         ));
         assert!(matches!(
             CMAESOptions::new(5)
                 .initial_step_size(f64::INFINITY)
                 .build(dummy_function),
-
             Err(InvalidOptionsError::InitialStepSize),
         ));
         assert!(matches!(
@@ -251,15 +247,11 @@ mod tests {
             Err(InvalidOptionsError::Cm),
         ));
         assert!(matches!(
-            CMAESOptions::new(5)
-                .cm(f64::NAN)
-                .build(dummy_function),
+            CMAESOptions::new(5).cm(f64::NAN).build(dummy_function),
             Err(InvalidOptionsError::Cm),
         ));
         assert!(matches!(
-            CMAESOptions::new(5)
-                .cm(f64::INFINITY)
-                .build(dummy_function),
+            CMAESOptions::new(5).cm(f64::INFINITY).build(dummy_function),
             Err(InvalidOptionsError::Cm),
         ));
     }
