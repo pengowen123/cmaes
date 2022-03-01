@@ -2,9 +2,18 @@
 
 A Rust implementation of the CMA-ES optimization algorithm. It is used to minimize the value of an objective function and performs well on high-dimension, non-linear, non-convex, ill-conditioned, and/or noisy problems. See [this paper][0] for details on the algorithm itself. This library is based on the linked paper and the [pycma][1] implementation.
 
-# Quick Start
+## Dependencies
 
-A LAPACK implementation, FreeType, and Rust 1.57 or later must be installed.
+`cmaes` uses some external libraries, so the following dependencies are required:
+
+- CMake
+- A C compiler
+- A Fortran compiler (GCC's gfortran works)
+- Rust (tested with rustc 1.57, earlier versions may work)
+
+Building is currently only supported on Linux (see [issue #4][4]).
+
+## Quick Start
 
 Add this to your Cargo.toml:
 
@@ -42,13 +51,13 @@ The produced plot will look like this:
 
 For more information, see the [documentation][2] and [examples][3].
 
-# Contributing
+## Contributing
 
 Contributions are welcome! You can contribute by reporting any bugs or issues you have with the library, adding documentation, or opening pull requests.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as below, without any additional terms or conditions.
 
-# License
+## License
 
 Licensed under either of
 
@@ -61,3 +70,4 @@ at your option.
 [1]: https://github.com/CMA-ES/pycma
 [2]: https://docs.rs/cmaes/latest/cmaes
 [3]: https://github.com/pengowen123/cmaes/tree/master/examples
+[4]: https://github.com/pengowen123/cmaes/issues/4
