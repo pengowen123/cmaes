@@ -8,12 +8,24 @@ license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/cmaes"
 repository = "https://github.com/pengowen123/cmaes"
 
+
+[features]
+# For BLAS/LAPACK
+default    = ["netlib"]
+openblas   = ["nalgebra-lapack/openblas"]
+netlib     = ["nalgebra-lapack/netlib"]
+accelerate = ["nalgebra-lapack/accelerate"]
+intel-mkl  = ["nalgebra-lapack/intel-mkl"]
+
 [dependencies]
 rand = "0.8.4"
 rand_chacha = "0.3.1"
 nalgebra = "0.30.1"
-nalgebra-lapack = "0.21.0"
 statrs = "0.15.0"
+
+[dependencies.nalgebra-lapack]
+version = "0.21.0"
+default-features = false
 
 [dependencies.plotters]
 version = "0.3.1"
