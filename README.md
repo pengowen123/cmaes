@@ -11,7 +11,7 @@ A Rust implementation of the CMA-ES optimization algorithm. It is used to minimi
 - A Fortran compiler (GCC's gfortran works)
 - Rust (tested with rustc 1.57, earlier versions may work)
 
-Building is currently only supported on Linux (see [issue #4][4]).
+Dependencies may differ depending on the selected LAPACK implementation. Building is currently only supported on Linux (see [issue #4][4]).
 
 ## Quick Start
 
@@ -21,6 +21,8 @@ Add this to your Cargo.toml:
 [dependencies]
 cmaes = "0.1.0"
 ```
+
+The LAPACK implementation used may be selected through Cargo features (see `Cargo.toml`). `netlib` is built from source by default.
 
 Then, to optimize a function:
 ```rust
