@@ -95,18 +95,24 @@ fn test_ellipsoid() {
     run_test_ellipsoid(30, 1, 29000, 0, Weights::Negative);
 }
 
+fn run_test_rosenbrock(
+    dim: usize,
+    pop_size_mult: usize,
+    max_avg_evals: usize,
+    max_failures: usize,
+    weights: Weights
+) {
+    let mut options = CMAESOptions::new(dim)
+        .initial_step_size(0.1)
+        .initial_mean(vec![0.1; dim])
+        .weights(weights);
+    options.population_size *= pop_size_mult;
+
+    run_test(rosenbrock, options, max_avg_evals, max_failures);
+}
+
 #[test]
 fn test_rosenbrock() {
-    let run_test_rosenbrock = |dim, pop_size_mult, max_avg_evals, max_failures, weights| {
-        let mut options = CMAESOptions::new(dim)
-            .initial_step_size(0.1)
-            .initial_mean(vec![0.1; dim])
-            .weights(weights);
-        options.population_size *= pop_size_mult;
-
-        run_test(rosenbrock, options, max_avg_evals, max_failures);
-    };
-
     run_test_rosenbrock(3, 1, 1320, 0, Weights::Negative);
     run_test_rosenbrock(10, 1, 6060, 1, Weights::Negative);
     // Finds local minimum sometimes with larger population size
@@ -257,35 +263,46 @@ fn test_fixed_seed() {
     assert_approx_eq!(overall_best.value, 2.210750747950352, eps);
 }
 
-// Checks that certain usage patterns work
-#[test]
-fn test_api_usage() {
-    // Non-static objective function (references something or is a reference)
-    let mut x = 0.0;
-    let mut non_static_function = |_: &DVector<f64>| {
-        x += 1.0;
-        x
-    };
+/// For tests with consistent results
+mod consistent {
+    use super::*;
 
-    let _ = CMAESOptions::new(5)
-        .build(&mut non_static_function)
-        .unwrap();
-    let non_static_state = CMAESOptions::new(5).build(non_static_function).unwrap();
+    // Checks that certain usage patterns work
+    #[test]
+    fn test_api_usage() {
+        // Non-static objective function (references something or is a reference)
+        let mut x = 0.0;
+        let mut non_static_function = |_: &DVector<f64>| {
+            x += 1.0;
+            x
+        };
 
-    // Storing a CMAESState with a static objective function without dealing with lifetimes
-    struct StaticContainer(CMAESState<'static>);
+        let _ = CMAESOptions::new(5)
+            .build(&mut non_static_function)
+            .unwrap();
+        let non_static_state = CMAESOptions::new(5).build(non_static_function).unwrap();
 
-    let static_function = |x: &DVector<f64>| x.magnitude();
+        // Storing a CMAESState with a static objective function without dealing with lifetimes
+        struct StaticContainer(CMAESState<'static>);
 
-    let static_state = CMAESOptions::new(5).build(static_function).unwrap();
-    StaticContainer(static_state);
+        let static_function = |x: &DVector<f64>| x.magnitude();
 
-    // Storing a CMAESState with any lifetime
-    struct NonStaticContainer<'a>(CMAESState<'a>);
-    NonStaticContainer(non_static_state);
+        let static_state = CMAESOptions::new(5).build(static_function).unwrap();
+        StaticContainer(static_state);
 
-    let static_state = CMAESOptions::new(5).build(static_function).unwrap();
-    NonStaticContainer(static_state);
+        // Storing a CMAESState with any lifetime
+        struct NonStaticContainer<'a>(CMAESState<'a>);
+        NonStaticContainer(non_static_state);
+
+        let static_state = CMAESOptions::new(5).build(static_function).unwrap();
+        NonStaticContainer(static_state);
+    }
+
+    #[test]
+    fn test_rosenbrock_small_dim() {
+        run_test_rosenbrock(3, 1, 1320, 0, Weights::Negative);
+        run_test_rosenbrock(3, 1, 1600, 0, Weights::Positive);
+    }
 }
 
 // N-dimensional sphere function
