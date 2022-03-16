@@ -1,5 +1,8 @@
 # cmaes
 
+[![Crates.io](https://img.shields.io/crates/v/cmaes)](https://crates.io/crates/cmaes)
+[![Rust](https://github.com/pengowen123/cmaes/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/pengowen123/cmaes/actions/workflows/rust.yml)
+
 A Rust implementation of the CMA-ES optimization algorithm. It is used to minimize the value of an objective function and performs well on high-dimension, non-linear, non-convex, ill-conditioned, and/or noisy problems. See [this paper][0] for details on the algorithm itself. This library is based on the linked paper and the [pycma][1] implementation.
 
 ## Dependencies
