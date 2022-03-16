@@ -9,10 +9,12 @@ A Rust implementation of the CMA-ES optimization algorithm. It is used to minimi
 
 `cmaes` uses some external libraries, so the following dependencies are required:
 
+- Make
 - CMake
 - A C compiler
 - A Fortran compiler (GCC's gfortran works)
 - Rust (tested with rustc 1.57, earlier versions may work)
+- FreeType
 
 Dependencies may differ depending on the selected LAPACK implementation. Building is currently only supported on Linux (see [issue #4][4]).
 
