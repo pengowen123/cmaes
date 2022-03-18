@@ -21,4 +21,4 @@ jobs:
     - name: Run tests
       run: cargo test --verbose --lib && cargo test --verbose --doc && cargo test --verbose --test termination && cargo test --verbose consistent
     - name: Run examples
-      run: cargo run --example simple
+      run: cargo run --example simple && cargo run --example custom_type
