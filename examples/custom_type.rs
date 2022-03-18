@@ -11,11 +11,7 @@ struct Rosenbrock {
 
 impl Rosenbrock {
     fn new(a: f64, b: f64) -> Self {
-        Self {
-            a,
-            b,
-            counter: 0.0,
-        }
+        Self { a, b, counter: 0.0 }
     }
 }
 
@@ -65,5 +61,8 @@ fn main() {
     }
 
     // Retrieve the state stored in the objective function
-    println!("Sum of objective function values outputted: {}", function.counter);
+    println!(
+        "Sum of objective function values outputted: {}",
+        function.counter
+    );
 }

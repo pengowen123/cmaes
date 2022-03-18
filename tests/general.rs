@@ -100,7 +100,7 @@ fn run_test_rosenbrock(
     pop_size_mult: usize,
     max_avg_evals: usize,
     max_failures: usize,
-    weights: Weights
+    weights: Weights,
 ) {
     let mut options = CMAESOptions::new(dim)
         .initial_step_size(0.1)
