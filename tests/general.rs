@@ -172,7 +172,7 @@ fn test_fixed_seed() {
 
     let params = cmaes_state.parameters();
 
-    let eps = 1e-15;
+    let eps = 1e-12;
     assert_eq!(params.dim(), dimension);
     assert_eq!(params.lambda(), population_size);
     assert_eq!(params.mu(), 6);
