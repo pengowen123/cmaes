@@ -58,6 +58,12 @@ The produced plot will look like this:
 
 For more information, see the [documentation][2] and [examples][3].
 
+## Testing
+
+The library's tests can be run with `cargo test --release`. Note that some tests may fail occasionally due to the random nature of the algorithm, but as long as no tests fail consistently then they can be considered to have passed.
+
+Benchmarks can be run with `cargo bench`.
+
 ## Contributing
 
 Contributions are welcome! You can contribute by reporting any bugs or issues you have with the library, adding documentation, or opening pull requests.
