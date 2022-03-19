@@ -3,6 +3,7 @@
 use nalgebra::DVector;
 
 use crate::{CMAESState, ObjectiveFunction, PlotOptions};
+use crate::parameters::Weights;
 
 /// A builder for [`CMAESState`]. Used to adjust parameters of the algorithm to each particular
 /// problem and to change other options. See the fields and methods for a full list of options.
@@ -158,26 +159,6 @@ impl CMAESOptions {
         objective_function: F,
     ) -> Result<CMAESState<'a>, InvalidOptionsError> {
         CMAESState::new(Box::new(objective_function), self)
-    }
-}
-
-/// The distribution of weights for the population. The default value is `Negative`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Weights {
-    /// Weights are higher for higher-ranked selected individuals and are zero for the rest of the
-    /// population. Usually performs slightly worse than `Negative`.
-    Positive,
-    /// Similar to `Positive`, but non-selected individuals have negative weights. With this
-    /// setting, the algorithm is known as active CMA-ES or aCMA-ES.
-    Negative,
-    /// Weights for selected individuals are equal and are zero for the rest of the population. This
-    /// setting will likely perform much worse than the others.
-    Uniform,
-}
-
-impl Default for Weights {
-    fn default() -> Self {
-        Self::Negative
     }
 }
 

@@ -35,13 +35,15 @@
 
 pub mod objective_function;
 pub mod options;
+pub mod parameters;
 pub mod plotting;
 mod utils;
 
 pub use nalgebra::DVector;
 
 pub use crate::objective_function::ObjectiveFunction;
-pub use crate::options::{CMAESOptions, Weights};
+pub use crate::options::CMAESOptions;
+pub use crate::parameters::Weights;
 pub use crate::plotting::PlotOptions;
 
 use nalgebra::DMatrix;
@@ -56,6 +58,7 @@ use std::fmt::{self, Debug};
 use std::{f64, iter};
 
 use crate::options::InvalidOptionsError;
+use crate::parameters::Parameters;
 use crate::plotting::Plot;
 
 /// An individual point with its corresponding objective function value.
@@ -133,125 +136,6 @@ pub enum TerminationReason {
 impl fmt::Display for TerminationReason {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         Debug::fmt(self, fmt)
-    }
-}
-
-/// Stores constant parameters for the algorithm. Obtained by calling [`CMAESState::parameters`].
-#[derive(Clone, Debug)]
-pub struct Parameters {
-    /// Number of dimensions to search
-    dim: usize,
-    /// Population size,
-    lambda: usize,
-    /// Number of individuals to select each generation
-    mu: usize,
-    /// Initial value for sigma
-    initial_sigma: f64,
-    /// Variance-effective selection mass
-    mu_eff: f64,
-    /// Individual weights
-    weights: DVector<f64>,
-    /// The setting used for calculating the weights
-    weights_setting: Weights,
-    /// Learning rate for rank-one update cumulation
-    cc: f64,
-    /// Learning rate for rank-one update
-    c1: f64,
-    /// Learning rate for step size update
-    cs: f64,
-    /// Learning rate for rank-mu update
-    cmu: f64,
-    /// Learning rate for the mean
-    cm: f64,
-    /// Damping parameter for step size update
-    damp_s: f64,
-    /// Value for the TolFun termination criterion
-    tol_fun: f64,
-    /// Value for the TolX termination criterion
-    tol_x: f64,
-    /// Seed for the RNG
-    seed: u64,
-}
-
-impl Parameters {
-    /// Returns the problem dimension `N`.
-    pub fn dim(&self) -> usize {
-        self.dim
-    }
-
-    /// Returns the population size `lambda`.
-    pub fn lambda(&self) -> usize {
-        self.lambda
-    }
-
-    /// Returns the selected population size `mu`.
-    pub fn mu(&self) -> usize {
-        self.mu
-    }
-
-    /// Returns the initial step size `sigma0`.
-    pub fn initial_sigma(&self) -> f64 {
-        self.initial_sigma
-    }
-
-    /// Returns the variance-effective selection mass `mu_eff`.
-    pub fn mu_eff(&self) -> f64 {
-        self.mu_eff
-    }
-
-    /// Returns the weights `w`.
-    pub fn weights(&self) -> &DVector<f64> {
-        &self.weights
-    }
-
-    /// Returns the setting used for calculating the weights.
-    pub fn weights_setting(&self) -> Weights {
-        self.weights_setting
-    }
-
-    /// Returns the learning rate for rank-one update cumulation `cc`.
-    pub fn cc(&self) -> f64 {
-        self.cc
-    }
-
-    /// Returns the learning rate for the rank-one update `c1`.
-    pub fn c1(&self) -> f64 {
-        self.c1
-    }
-
-    /// Returns the learning rate for the step size update `cs`.
-    pub fn cs(&self) -> f64 {
-        self.cs
-    }
-
-    /// Returns the learning rate for the rank-mu update `cmu`.
-    pub fn cmu(&self) -> f64 {
-        self.cmu
-    }
-
-    /// Returns the learning rate for the mean update `cm`.
-    pub fn cm(&self) -> f64 {
-        self.cm
-    }
-
-    /// Returns the damping factor for the step size update `damp_s`.
-    pub fn damp_s(&self) -> f64 {
-        self.damp_s
-    }
-
-    /// Returns the value for the [`TerminationReason::TolFun`] termination criterion.
-    pub fn tol_fun(&self) -> f64 {
-        self.tol_fun
-    }
-
-    /// Returns the value for the [`TerminationReason::TolX`] termination criterion.
-    pub fn tol_x(&self) -> f64 {
-        self.tol_x
-    }
-
-    /// Returns the seed for the RNG.
-    pub fn seed(&self) -> u64 {
-        self.seed
     }
 }
 
@@ -358,93 +242,22 @@ impl<'a> CMAESState<'a> {
             return Err(InvalidOptionsError::Cm);
         }
 
-        // Initialize constant parameters according to the options
-        let dim = options.dimensions;
-        let lambda = options.population_size;
-        let mu = lambda / 2;
-        let cm = options.cm;
-
-        // Set initial weights
-        // They will be normalized later
-        let mut weights: DVector<f64> = match options.weights {
-            // weights.len() == mu
-            Weights::Uniform => vec![1.0; mu],
-            // weights.len() == mu
-            Weights::Positive => (1..=mu)
-                .map(|i| ((lambda as f64 + 1.0) / 2.0).ln() - (i as f64).ln())
-                .collect::<Vec<_>>(),
-            // weights.len() == lambda
-            Weights::Negative => (1..=lambda)
-                .map(|i| ((lambda as f64 + 1.0) / 2.0).ln() - (i as f64).ln())
-                .collect::<Vec<_>>(),
-        }
-        .into();
-
-        // Square of sum divided by sum of squares of the first mu weights (all positive weights)
-        let mu_eff = weights.iter().take(mu).sum::<f64>().powi(2)
-            / weights.iter().take(mu).map(|w| w.powi(2)).sum::<f64>();
-
-        // Covariance matrix adaptation
-        let a_cov = 2.0;
-        let cc = (4.0 + mu_eff / dim as f64) / (dim as f64 + 4.0 + 2.0 * mu_eff / dim as f64);
-        let c1 = a_cov / ((dim as f64 + 1.3).powi(2) + mu_eff);
-        let cmu = (1.0 - c1).min(
-            a_cov * (mu_eff - 2.0 + 1.0 / mu_eff)
-                / ((dim as f64 + 2.0).powi(2) + a_cov * mu_eff / 2.0),
-        );
-
-        // Normalize the sum of the weights
-        // All positive weights will sum to 1, while the sum of the negative weights is chosen below
-
-        // Like mu_eff but for all negative weights (those past the first mu)
-        let mu_eff_minus = weights.iter().skip(mu).sum::<f64>().powi(2)
-            / weights.iter().skip(mu).map(|w| w.powi(2)).sum::<f64>();
-
-        // Possible sums of negative weights
-        // The smallest of these values will be used
-        let a_mu = 1.0 + c1 / cmu;
-        let a_mu_eff = 1.0 + (2.0 * mu_eff_minus) / (mu_eff + 2.0);
-        let a_pos_def = (1.0 - c1 - cmu) / (dim as f64 * cmu);
-        let a = a_mu.min(a_mu_eff.min(a_pos_def));
-
-        // Sums for normalization
-        let sum_positive_weights = weights.iter().filter(|w| **w > 0.0).sum::<f64>();
-        let sum_negative_weights = weights.iter().filter(|w| **w < 0.0).sum::<f64>().abs();
-
-        for w in &mut weights {
-            if *w > 0.0 {
-                *w /= sum_positive_weights;
-            } else {
-                *w = *w * a / sum_negative_weights;
-            }
-        }
-
-        // Step size adaptation
-        let cs = (mu_eff + 2.0) / (dim as f64 + mu_eff + 5.0);
-        let damp_s = 1.0 + cs + 2.0 * (((mu_eff - 1.0) / (dim as f64 + 1.0)).sqrt() - 1.0).max(0.0);
-
         // Initialize rng
         let seed = options.seed.unwrap_or(rand::random());
         let rng = ChaCha12Rng::seed_from_u64(seed);
 
-        let parameters = Parameters {
-            dim,
-            lambda,
-            mu,
-            initial_sigma: options.initial_step_size,
-            mu_eff,
-            weights,
-            weights_setting: options.weights,
-            cc,
-            c1,
-            cs,
-            cmu,
-            cm,
-            damp_s,
-            tol_fun: options.tol_fun,
-            tol_x: options.tol_x.unwrap_or(1e-12 * options.initial_step_size),
+        // Initialize constant parameters according to the options
+        let tol_x = options.tol_x.unwrap_or(1e-12 * options.initial_step_size);
+        let parameters = Parameters::new(
+            options.dimensions,
+            options.population_size,
+            options.weights,
             seed,
-        };
+            options.initial_step_size,
+            options.cm,
+            options.tol_fun,
+            tol_x,
+        );
 
         // Initialize variable parameters
         let mean = options.initial_mean;
@@ -457,7 +270,7 @@ impl<'a> CMAESState<'a> {
         let path_sigma = DVector::zeros(options.dimensions);
 
         // Initialize plot if enabled
-        let plot = options.plot_options.map(|o| Plot::new(dim, o));
+        let plot = options.plot_options.map(|o| Plot::new(options.dimensions, o));
 
         let mut state = Self {
             objective_function,
@@ -530,11 +343,11 @@ impl<'a> CMAESState<'a> {
         let params = &self.parameters;
 
         // Random steps in the distribution N(0, cov)
-        let y = (0..params.lambda)
+        let y = (0..params.lambda())
             .map(|_| {
                 DVector::from_iterator(
-                    params.dim,
-                    (0..params.dim).map(|_| normal.sample(&mut self.rng)),
+                    params.dim(),
+                    (0..params.dim()).map(|_| normal.sample(&mut self.rng)),
                 )
             })
             .map(|zk| &self.cov_eigenvectors * &self.cov_sqrt_eigenvalues * zk)
@@ -587,11 +400,22 @@ impl<'a> CMAESState<'a> {
     /// state must be done manually as well in this case).
     #[must_use]
     pub fn next(&mut self) -> Option<TerminationData> {
+        let dim = self.parameters.dim();
+        let lambda = self.parameters.lambda();
+        let mu = self.parameters.mu();
+        let mu_eff = self.parameters.mu_eff();
+        let cc = self.parameters.cc();
+        let c1 = self.parameters.c1();
+        let cs = self.parameters.cs();
+        let cmu = self.parameters.cmu();
+        let cm = self.parameters.cm();
+        let damp_s = self.parameters.damp_s();
+
         // How many generations to store in self.best_function_values and
         // self.median_function_value
         let past_generations_to_store = ((0.2 * self.generation as f64).ceil() as usize)
             .max(
-                120 + (30.0 * self.parameters.dim as f64 / self.parameters.lambda as f64).ceil()
+                120 + (30.0 * dim as f64 / lambda as f64).ceil()
                     as usize,
             )
             .min(20000);
@@ -610,61 +434,61 @@ impl<'a> CMAESState<'a> {
         // Only the mu best individuals are used even if there are lambda weights
         let yw = individuals
             .iter()
-            .take(params.mu)
+            .take(mu)
             .enumerate()
-            .map(|(i, (y, _))| y * params.weights[i])
+            .map(|(i, (y, _))| y * self.parameters.weights()[i])
             .sum::<DVector<f64>>();
-        self.mean = &self.mean + &(params.cm * self.sigma * &yw);
+        self.mean = &self.mean + &(cm * self.sigma * &yw);
 
         // Update evolution paths
         let sqrt_inv_c = &self.cov_eigenvectors
             * DMatrix::from_diagonal(&self.cov_sqrt_eigenvalues.map_diagonal(|d| 1.0 / d))
             * self.cov_eigenvectors.transpose();
 
-        self.path_sigma = (1.0 - params.cs) * &self.path_sigma
-            + (params.cs * (2.0 - params.cs) * params.mu_eff).sqrt() * &sqrt_inv_c * &yw;
+        self.path_sigma = (1.0 - cs) * &self.path_sigma
+            + (cs * (2.0 - cs) * mu_eff).sqrt() * &sqrt_inv_c * &yw;
 
         // Expectation of N(0, I)
-        let chi_n = (params.dim as f64).sqrt()
-            * (1.0 - 1.0 / (4.0 * params.dim as f64) + 1.0 / (21.0 * params.dim.pow(2) as f64));
+        let chi_n = (dim as f64).sqrt()
+            * (1.0 - 1.0 / (4.0 * dim as f64) + 1.0 / (21.0 * dim.pow(2) as f64));
 
         let hs = if (self.path_sigma.magnitude()
-            / (1.0 - (1.0 - params.cs).powi(2 * (self.generation as i32 + 1))).sqrt())
-            < (1.4 + 2.0 / (params.dim as f64 + 1.0)) * chi_n
+            / (1.0 - (1.0 - cs).powi(2 * (self.generation as i32 + 1))).sqrt())
+            < (1.4 + 2.0 / (dim as f64 + 1.0)) * chi_n
         {
             1.0
         } else {
             0.0
         };
 
-        self.path_c = (1.0 - params.cc) * &self.path_c
-            + hs * (params.cc * (2.0 - params.cc) * params.mu_eff).sqrt() * &yw;
+        self.path_c = (1.0 - cc) * &self.path_c
+            + hs * (cc * (2.0 - cc) * mu_eff).sqrt() * &yw;
 
         // Update step size
         self.sigma *=
-            ((params.cs / params.damp_s) * ((self.path_sigma.magnitude() / chi_n) - 1.0)).exp();
+            ((cs / damp_s) * ((self.path_sigma.magnitude() / chi_n) - 1.0)).exp();
 
         // Update covariance matrix
         let weights_cov = params
-            .weights
+            .weights()
             .iter()
             .enumerate()
             .map(|(i, w)| {
                 *w * if *w >= 0.0 {
                     1.0
                 } else {
-                    params.dim as f64 / (&sqrt_inv_c * &individuals[i].0).magnitude().powi(2)
+                    dim as f64 / (&sqrt_inv_c * &individuals[i].0).magnitude().powi(2)
                 }
             })
             .collect::<Vec<_>>();
 
-        let delta_hs = (1.0 - hs) * params.cc * (2.0 - params.cc);
-        self.cov = (1.0 + params.c1 * delta_hs
-            - params.c1
-            - params.cmu * params.weights.iter().sum::<f64>())
+        let delta_hs = (1.0 - hs) * cc * (2.0 - cc);
+        self.cov = (1.0 + c1 * delta_hs
+            - c1
+            - cmu * self.parameters.weights().iter().sum::<f64>())
             * &self.cov
-            + params.c1 * &self.path_c * self.path_c.transpose()
-            + params.cmu
+            + c1 * &self.path_c * self.path_c.transpose()
+            + cmu
                 * weights_cov
                     .into_iter()
                     .enumerate()
@@ -676,8 +500,8 @@ impl<'a> CMAESState<'a> {
 
         // Update eigendecomposition occasionally (updating every generation is unnecessary and
         // inefficient for high dim)
-        let evals_per_eigen = (0.5 * params.dim as f64 * params.lambda as f64
-            / ((params.c1 + params.cmu) * params.dim.pow(2) as f64))
+        let evals_per_eigen = (0.5 * dim as f64 * lambda as f64
+            / ((c1 + cmu) * dim.pow(2) as f64))
             as usize;
 
         if self.function_evals > self.last_eigen_update_evals + evals_per_eigen {
@@ -745,14 +569,11 @@ impl<'a> CMAESState<'a> {
         individuals: &[(DVector<f64>, f64)],
         past_generations_to_store: usize,
     ) -> Option<TerminationReason> {
-        let Parameters {
-            dim,
-            lambda,
-            initial_sigma,
-            tol_fun,
-            tol_x,
-            ..
-        } = self.parameters;
+        let dim = self.parameters.dim();
+        let lambda = self.parameters.lambda();
+        let initial_sigma = self.parameters.initial_sigma();
+        let tol_fun = self.parameters.tol_fun();
+        let tol_x = self.parameters.tol_x();
 
         let Self {
             ref generation,
@@ -891,7 +712,7 @@ impl<'a> CMAESState<'a> {
         self.objective_function
     }
 
-    /// Returns the parameters of the algorithm.
+    /// Returns the constant parameters of the algorithm.
     pub fn parameters(&self) -> &Parameters {
         &self.parameters
     }
@@ -985,13 +806,13 @@ impl<'a> CMAESState<'a> {
     /// This function is called automatically if [`CMAESOptions::enable_printing`] is set.
     pub fn print_initial_info(&self) {
         let params = &self.parameters;
-        let variant = match params.weights_setting {
+        let variant = match params.weights_setting() {
             Weights::Positive | Weights::Uniform => "CMA-ES",
             Weights::Negative => "aCMA-ES",
         };
         println!(
             "{} with dimension={}, lambda={}, seed={}",
-            variant, params.dim, params.lambda, params.seed
+            variant, params.dim(), params.lambda(), params.seed()
         );
 
         let title_string = format!(
@@ -1123,66 +944,6 @@ mod tests {
 
         for x in (reconstructed - matrix).iter() {
             assert_approx_eq!(x, 0.0);
-        }
-    }
-
-    // Tests that Weights::Positive produces only positive weight values and that they are
-    // normalized properly
-    #[test]
-    fn test_weights_positive() {
-        for d in 2..30 {
-            for n in 1..20 {
-                let mut options = CMAESOptions::new(d).weights(Weights::Positive);
-
-                options.population_size *= n;
-
-                let cmaes_state = options.build(dummy_function).unwrap();
-
-                assert!(cmaes_state.parameters.weights.iter().all(|w| *w > 0.0));
-                assert_approx_eq!(
-                    cmaes_state.parameters.weights.iter().sum::<f64>(),
-                    1.0,
-                    1e-12
-                );
-            }
-        }
-    }
-
-    // Tests that Weights::Negative produces only positive values for the first mu weights and only
-    // negative values for the rest
-    #[test]
-    fn test_weights_negative() {
-        for d in 2..30 {
-            for n in 1..20 {
-                let mut options = CMAESOptions::new(d).weights(Weights::Negative);
-                options.population_size *= n;
-                let cmaes_state = options.build(dummy_function).unwrap();
-
-                assert!(cmaes_state
-                    .parameters
-                    .weights
-                    .iter()
-                    .take(cmaes_state.parameters.mu)
-                    .all(|w| *w > 0.0));
-
-                assert_approx_eq!(
-                    cmaes_state
-                        .parameters
-                        .weights
-                        .iter()
-                        .take(cmaes_state.parameters.mu)
-                        .sum::<f64>(),
-                    1.0,
-                    1e-12
-                );
-
-                assert!(cmaes_state
-                    .parameters
-                    .weights
-                    .iter()
-                    .skip(cmaes_state.parameters.mu)
-                    .all(|w| *w <= 0.0));
-            }
         }
     }
 
