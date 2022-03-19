@@ -24,7 +24,7 @@ Add this to your Cargo.toml:
 
 ```
 [dependencies]
-cmaes = "0.1.0"
+cmaes = "0.1"
 ```
 
 The LAPACK implementation used may be selected through Cargo features (see `Cargo.toml`). `netlib` is built from source by default.
