@@ -37,6 +37,7 @@ pub mod objective_function;
 pub mod options;
 pub mod parameters;
 pub mod plotting;
+mod matrix;
 mod state;
 mod utils;
 
@@ -47,7 +48,6 @@ pub use crate::options::CMAESOptions;
 pub use crate::parameters::Weights;
 pub use crate::plotting::PlotOptions;
 
-use nalgebra::DMatrix;
 use rand::distributions::Distribution;
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
@@ -58,6 +58,7 @@ use std::collections::VecDeque;
 use std::fmt::{self, Debug};
 use std::{f64, iter};
 
+use crate::matrix::SquareMatrix;
 use crate::options::InvalidOptionsError;
 use crate::parameters::Parameters;
 use crate::plotting::Plot;
@@ -600,7 +601,7 @@ impl<'a> CMAES<'a> {
     }
 
     /// Returns the current covariance matrix of the distribution.
-    pub fn covariance_matrix(&self) -> &DMatrix<f64> {
+    pub fn covariance_matrix(&self) -> &SquareMatrix<f64> {
         self.state.cov()
     }
 
@@ -758,8 +759,9 @@ impl<'a> CMAES<'a> {
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::DMatrix;
+
     use super::*;
-    use crate::state::decompose_cov_pub;
 
     fn dummy_function(_: &DVector<f64>) -> f64 {
         0.0
@@ -836,10 +838,7 @@ mod tests {
             .build(dummy_function)
             .unwrap();
         *cmaes.state.mut_sigma() = 1e4;
-        *cmaes.state.mut_cov() = DMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e4]);
-        let (eigenvectors, sqrt_eigenvalues) = decompose_cov_pub(cmaes.state.cov().clone()).unwrap();
-        *cmaes.state.mut_cov_eigenvectors() = eigenvectors;
-        *cmaes.state.mut_cov_sqrt_eigenvalues() = sqrt_eigenvalues;
+        cmaes.state.mut_cov().set_cov(DMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e4]), true).unwrap();
         assert_eq!(
             cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             None,
@@ -923,17 +922,17 @@ mod tests {
         // NoEffectAxis
         let dim = 2;
         let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
-        let eigenvectors = [
-            DVector::from(vec![3.0, 2.0]).normalize(),
-            DVector::from(vec![-2.0, 3.0]).normalize(),
-        ];
         *cmaes.state.mut_mean() = vec![100.0; 2].into();
         *cmaes.state.mut_sigma() = 1e-10;
-        *cmaes.state.mut_cov_eigenvectors() = DMatrix::from_columns(&eigenvectors);
-        *cmaes.state.mut_cov_sqrt_eigenvalues() = DMatrix::from_diagonal(&vec![1e-1, 1e-6].into());
-        *cmaes.state.mut_cov() = cmaes.state.cov_eigenvectors()
-            * cmaes.state.cov_sqrt_eigenvalues().pow(2)
-            * cmaes.state.cov_eigenvectors().transpose();
+        let eigenvectors = DMatrix::from_columns(&[
+            DVector::from(vec![3.0, 2.0]).normalize(),
+            DVector::from(vec![-2.0, 3.0]).normalize(),
+        ]);
+        let sqrt_eigenvalues = DMatrix::from_diagonal(&vec![1e-1, 1e-6].into());
+        let cov = &eigenvectors
+            * sqrt_eigenvalues.pow(2)
+            * eigenvectors.transpose();
+        cmaes.state.mut_cov().set_cov(cov, true).unwrap();
 
         let mut terminated = false;
         for g in 0..dim {
@@ -955,11 +954,12 @@ mod tests {
         let dim = 2;
         let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
         *cmaes.state.mut_mean() = vec![100.0; 2].into();
-        *cmaes.state.mut_cov_eigenvectors() = DMatrix::identity(2, 2);
-        *cmaes.state.mut_cov_sqrt_eigenvalues() = DMatrix::from_diagonal(&vec![1e-4, 1e-10].into());
-        *cmaes.state.mut_cov() = cmaes.state.cov_eigenvectors()
-            * cmaes.state.cov_sqrt_eigenvalues().pow(2)
-            * cmaes.state.cov_eigenvectors().transpose();
+        let eigenvectors = DMatrix::<f64>::identity(2, 2);
+        let sqrt_eigenvalues = DMatrix::from_diagonal(&vec![1e-4, 1e-10].into());
+        let cov = &eigenvectors
+            * sqrt_eigenvalues.pow(2)
+            * eigenvectors.transpose();
+        cmaes.state.mut_cov().set_cov(cov, true).unwrap();
 
         let mut terminated = false;
         for g in 0..dim {
@@ -980,10 +980,7 @@ mod tests {
         // ConditionCov
         let dim = 2;
         let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
-        *cmaes.state.mut_cov() = DMatrix::from_iterator(2, 2, [0.99, 0.0, 0.0, 1e14]);
-        let (eigenvectors, sqrt_eigenvalues) = decompose_cov_pub(cmaes.state.cov().clone()).unwrap();
-        *cmaes.state.mut_cov_eigenvectors() = eigenvectors;
-        *cmaes.state.mut_cov_sqrt_eigenvalues() = sqrt_eigenvalues;
+        cmaes.state.mut_cov().set_cov(DMatrix::from_iterator(2, 2, [0.99, 0.0, 0.0, 1e14]), true).unwrap();
         assert_eq!(
             cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             Some(TerminationReason::ConditionCov),

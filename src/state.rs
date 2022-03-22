@@ -3,6 +3,7 @@
 use nalgebra::{DVector, DMatrix};
 
 use crate::parameters::Parameters;
+use crate::matrix::{CovarianceMatrix, PosDefCovError};
 
 /// Stores the variable state of the algorithm and handles updating it
 pub struct State {
@@ -13,12 +14,7 @@ pub struct State {
     /// The distribution mean
     mean: DVector<f64>,
     /// The distribution covariance matrix
-    cov: DMatrix<f64>,
-    /// Normalized eigenvectors of `cov`, forming an orthonormal basis of the matrix
-    cov_eigenvectors: DMatrix<f64>,
-    /// Diagonal matrix containing the square roots of the eigenvalues of `cov`, which are the
-    /// scales of the basis axes
-    cov_sqrt_eigenvalues: DMatrix<f64>,
+    cov: CovarianceMatrix,
     /// The distribution step size
     sigma: f64,
     /// Evolution path of the mean used to update the covariance matrix
@@ -34,10 +30,7 @@ impl State {
     pub fn new(initial_mean: DVector<f64>, initial_sigma: f64) -> Self {
         let dim = initial_mean.len();
         let mean = initial_mean;
-        let cov = DMatrix::identity(dim, dim);
-        let eigen = decompose_cov(cov.clone()).unwrap();
-        let cov_eigenvectors = eigen.eigenvectors;
-        let cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
+        let cov = CovarianceMatrix::new(dim);
         let sigma = initial_sigma;
         let path_c = DVector::zeros(dim);
         let path_sigma = DVector::zeros(dim);
@@ -47,8 +40,6 @@ impl State {
             function_evals: 0,
             mean,
             cov,
-            cov_eigenvectors,
-            cov_sqrt_eigenvalues,
             sigma,
             path_c,
             path_sigma,
@@ -85,12 +76,10 @@ impl State {
         self.mean = &self.mean + &(cm * self.sigma * &yw);
 
         // Update evolution paths
-        let sqrt_inv_c = &self.cov_eigenvectors
-            * DMatrix::from_diagonal(&self.cov_sqrt_eigenvalues.map_diagonal(|d| 1.0 / d))
-            * self.cov_eigenvectors.transpose();
+        let sqrt_inv_c = self.cov.sqrt_inv();
 
         self.path_sigma = (1.0 - cs) * &self.path_sigma
-            + (cs * (2.0 - cs) * mu_eff).sqrt() * &sqrt_inv_c * &yw;
+            + (cs * (2.0 - cs) * mu_eff).sqrt() * sqrt_inv_c * &yw;
 
         // Expectation of N(0, I)
         let chi_n = (dim as f64).sqrt()
@@ -121,16 +110,16 @@ impl State {
                 *w * if *w >= 0.0 {
                     1.0
                 } else {
-                    dim as f64 / (&sqrt_inv_c * &individuals[i].0).magnitude().powi(2)
+                    dim as f64 / (sqrt_inv_c * &individuals[i].0).magnitude().powi(2)
                 }
             })
             .collect::<Vec<_>>();
 
         let delta_hs = (1.0 - hs) * cc * (2.0 - cc);
-        self.cov = (1.0 + c1 * delta_hs
+        let cov_new = (1.0 + c1 * delta_hs
             - c1
             - cmu * params.weights().iter().sum::<f64>())
-            * &self.cov
+            * self.cov.cov()
             + c1 * &self.path_c * self.path_c.transpose()
             + cmu
                 * weights_cov
@@ -139,21 +128,17 @@ impl State {
                     .map(|(i, wc)| wc * &individuals[i].0 * individuals[i].0.transpose())
                     .sum::<DMatrix<f64>>();
 
-        // Ensure symmetry
-        self.cov.fill_lower_triangle_with_upper_triangle();
-
         // Update eigendecomposition occasionally (updating every generation is unnecessary and
         // inefficient for high dim)
         let evals_per_eigen = (0.5 * dim as f64 * params.lambda() as f64
             / ((c1 + cmu) * dim.pow(2) as f64))
             as usize;
+        let do_eigen_update = self.function_evals >= self.last_eigen_update_evals + evals_per_eigen;
 
-        if self.function_evals > self.last_eigen_update_evals + evals_per_eigen {
+        self.cov.set_cov(cov_new, do_eigen_update)?;
+
+        if do_eigen_update {
             self.last_eigen_update_evals = self.function_evals;
-
-            let eigen = decompose_cov(self.cov.clone())?;
-            self.cov_eigenvectors = eigen.eigenvectors;
-            self.cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
         }
 
         self.generation += 1;
@@ -174,20 +159,20 @@ impl State {
     }
 
     pub fn cov(&self) -> &DMatrix<f64> {
-        &self.cov
+        self.cov.cov()
     }
 
     pub fn cov_eigenvectors(&self) -> &DMatrix<f64> {
-        &self.cov_eigenvectors
+        self.cov.eigenvectors()
     }
 
     pub fn cov_sqrt_eigenvalues(&self) -> &DMatrix<f64> {
-        &self.cov_sqrt_eigenvalues
+        self.cov.sqrt_eigenvalues()
     }
 
     /// Returns the current axis ratio of the distribution
     pub fn axis_ratio(&self) -> f64 {
-        let diag = self.cov_sqrt_eigenvalues.diagonal();
+        let diag = self.cov.sqrt_eigenvalues().diagonal();
         diag.max() / diag.min()
     }
 
@@ -206,7 +191,7 @@ impl State {
     }
 
     #[cfg(test)]
-    pub fn mut_cov(&mut self) -> &mut DMatrix<f64> {
+    pub fn mut_cov(&mut self) -> &mut CovarianceMatrix {
         &mut self.cov
     }
 
@@ -216,80 +201,8 @@ impl State {
     }
 
     #[cfg(test)]
-    pub fn mut_cov_eigenvectors(&mut self) -> &mut DMatrix<f64> {
-        &mut self.cov_eigenvectors
-    }
-
-    #[cfg(test)]
-    pub fn mut_cov_sqrt_eigenvalues(&mut self) -> &mut DMatrix<f64> {
-        &mut self.cov_sqrt_eigenvalues
-    }
-
-    #[cfg(test)]
     pub fn mut_sigma(&mut self) -> &mut f64 {
         &mut self.sigma
     }
 }
 
-/// Decomposition of a covariance matrix
-struct CovDecomposition {
-    /// Columns are eigenvectors
-    eigenvectors: DMatrix<f64>,
-    /// Diagonal matrix with square roots of eigenvalues
-    sqrt_eigenvalues: DMatrix<f64>,
-}
-
-#[derive(Clone, Debug)]
-pub struct PosDefCovError;
-
-/// Decomposes a covariance matrix into a set of normalized eigenvectors and a diagonal matrix
-/// containing the square roots of the corresponding eigenvalues
-///
-/// Returns `Err` if the matrix is not positive-definite
-fn decompose_cov(matrix: DMatrix<f64>) -> Result<CovDecomposition, PosDefCovError> {
-    let mut eigen = nalgebra_lapack::SymmetricEigen::new(matrix);
-
-    for mut col in eigen.eigenvectors.column_iter_mut() {
-        col.normalize_mut();
-    }
-
-    if eigen.eigenvalues.iter().any(|x| *x <= 0.0) {
-        Err(PosDefCovError)
-    } else {
-        Ok(CovDecomposition {
-            eigenvectors: eigen.eigenvectors,
-            sqrt_eigenvalues: DMatrix::from_diagonal(&eigen.eigenvalues.map(|x| x.sqrt())),
-        })
-    }
-}
-
-// Only used in termination tests
-//
-// Returns (eigenvectors, eigenvalues)
-#[cfg(test)]
-pub fn decompose_cov_pub(matrix: DMatrix<f64>) -> Result<(DMatrix<f64>, DMatrix<f64>), PosDefCovError> {
-    decompose_cov(matrix).map(|eigen| (eigen.eigenvectors, eigen.sqrt_eigenvalues))
-}
-
-#[cfg(test)]
-mod tests {
-    use assert_approx_eq::assert_approx_eq;
-    use nalgebra::DMatrix;
-
-    use super::*;
-
-    #[test]
-    fn test_decompose_cov() {
-        let matrix = DMatrix::from_iterator(2, 2, [3.0, 1.5, 1.5, 2.0]);
-
-        let eigen = decompose_cov(matrix.clone()).unwrap();
-
-        let reconstructed = eigen.eigenvectors.clone()
-            * eigen.sqrt_eigenvalues.pow(2)
-            * eigen.eigenvectors.transpose();
-
-        for x in (reconstructed - matrix).iter() {
-            assert_approx_eq!(x, 0.0);
-        }
-    }
-}
