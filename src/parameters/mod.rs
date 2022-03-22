@@ -9,7 +9,7 @@ pub use weights::Weights;
 use weights::{FinalWeights, InitialWeights};
 
 /// Stores constant parameters for the algorithm. Obtained by calling
-/// [`CMAESState::parameters`][crate::CMAESState::parameters].
+/// [`CMAES::parameters`][crate::CMAES::parameters].
 #[derive(Clone, Debug)]
 pub struct Parameters {
     /// Number of dimensions to search

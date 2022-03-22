@@ -1,7 +1,7 @@
 //! General tests
 
 use assert_approx_eq::assert_approx_eq;
-use cmaes::{CMAESOptions, CMAESState, ObjectiveFunction, Weights};
+use cmaes::{CMAESOptions, CMAES, ObjectiveFunction, Weights};
 use nalgebra::DVector;
 
 use std::collections::HashMap;
@@ -166,6 +166,7 @@ fn test_fixed_seed() {
     let population_size = 12;
     let mut cmaes_state = CMAESOptions::new(dimension)
         .population_size(population_size)
+        .initial_step_size(5.0)
         .seed(seed)
         .build(function)
         .unwrap();
@@ -176,7 +177,7 @@ fn test_fixed_seed() {
     assert_eq!(params.dim(), dimension);
     assert_eq!(params.lambda(), population_size);
     assert_eq!(params.mu(), 6);
-    assert_approx_eq!(params.initial_sigma(), 0.5, eps);
+    assert_approx_eq!(params.initial_sigma(), 5.0, eps);
     assert_approx_eq!(params.mu_eff(), 3.729458934303068, eps);
     let weights_expected = [
         0.4024029428187127,
@@ -202,7 +203,7 @@ fn test_fixed_seed() {
     assert_approx_eq!(params.cm(), 1.0, eps);
     assert_approx_eq!(params.damp_s(), 1.4500944591496694, eps);
     assert_approx_eq!(params.tol_fun(), 0.000000000001, eps);
-    assert_approx_eq!(params.tol_x(), 0.0000000000005, eps);
+    assert_approx_eq!(params.tol_x(), 0.000000000005, eps);
     assert_eq!(params.seed(), seed);
 
     let generations = 10;
@@ -214,53 +215,53 @@ fn test_fixed_seed() {
     assert_eq!(cmaes_state.function_evals(), population_size * generations);
 
     let mean_expected = [
-        0.3905013183630414,
-        0.143349143153743,
-        -0.02861857391815352,
-        0.030451572191736394,
+        -0.7410175385751399,
+        0.4584000754445906,
+        0.07271743391612415,
+        -0.21426659534075343,
     ];
     for (x, expected) in cmaes_state.mean().iter().zip(mean_expected) {
         assert_approx_eq!(x, expected, eps);
     }
 
     let eigenvalues_expected = [
-        0.21631966578264544,
-        0.24993048179002433,
-        0.2659429224395665,
-        0.7871437989294525,
+        0.16552675641022155,
+        0.20638999168067776,
+        0.245971498782978,
+        0.7533179588300154,
     ];
     for (x, expected) in cmaes_state.eigenvalues().iter().zip(eigenvalues_expected) {
         assert_approx_eq!(x, expected, eps);
     }
 
-    assert_approx_eq!(cmaes_state.axis_ratio(), 1.907563648004273, eps);
-    assert_approx_eq!(cmaes_state.sigma(), 0.1708927201378601, eps);
+    assert_approx_eq!(cmaes_state.axis_ratio(), 2.1333153488330385, eps);
+    assert_approx_eq!(cmaes_state.sigma(), 1.248640716345183, eps);
 
     let current_best = cmaes_state.current_best_individual().unwrap();
     let current_best_expected = [
-        0.45043390884929013,
-        0.12148408546978581,
-        -0.024154735384168395,
-        -0.050013317101592646,
+        -1.13647778742836,
+        0.6467966530116105,
+        0.3239978388983541,
+        -0.41993207745293704,
     ];
     for (x, expected) in current_best.point.iter().zip(current_best_expected) {
         assert_approx_eq!(x, expected, eps);
     }
 
-    assert_approx_eq!(current_best.value, 3.1928361882670977, eps);
+    assert_approx_eq!(current_best.value, 75.16391027290686, eps);
 
     let overall_best = cmaes_state.overall_best_individual().unwrap();
     let overall_best_expected = [
-        0.4001605505779719,
-        0.16306101682314394,
-        -0.006695725176343273,
-        0.01598022024773967,
+        -0.7449503227893762,
+        0.1848895283976989,
+        -0.2416606558228348,
+        -0.19268839630032886,
     ];
     for (x, expected) in overall_best.point.iter().zip(overall_best_expected) {
         assert_approx_eq!(x, expected, eps);
     }
 
-    assert_approx_eq!(overall_best.value, 2.210750747950352, eps);
+    assert_approx_eq!(overall_best.value, 32.859092832300654, eps);
 }
 
 /// For tests with consistent results
@@ -282,16 +283,16 @@ mod consistent {
             .unwrap();
         let non_static_state = CMAESOptions::new(5).build(non_static_function).unwrap();
 
-        // Storing a CMAESState with a static objective function without dealing with lifetimes
-        struct StaticContainer(CMAESState<'static>);
+        // Storing a CMAES with a static objective function without dealing with lifetimes
+        struct StaticContainer(CMAES<'static>);
 
         let static_function = |x: &DVector<f64>| x.magnitude();
 
         let static_state = CMAESOptions::new(5).build(static_function).unwrap();
         StaticContainer(static_state);
 
-        // Storing a CMAESState with any lifetime
-        struct NonStaticContainer<'a>(CMAESState<'a>);
+        // Storing a CMAES with any lifetime
+        struct NonStaticContainer<'a>(CMAES<'a>);
         NonStaticContainer(non_static_state);
 
         let static_state = CMAESOptions::new(5).build(static_function).unwrap();

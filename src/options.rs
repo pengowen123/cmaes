@@ -1,11 +1,11 @@
-//! Types related to initializing a [`CMAESState`]. See [`CMAESOptions`] for full documentation.
+//! Types related to initializing a [`CMAES`]. See [`CMAESOptions`] for full documentation.
 
 use nalgebra::DVector;
 
-use crate::{CMAESState, ObjectiveFunction, PlotOptions};
+use crate::{CMAES, ObjectiveFunction, PlotOptions};
 use crate::parameters::Weights;
 
-/// A builder for [`CMAESState`]. Used to adjust parameters of the algorithm to each particular
+/// A builder for [`CMAES`]. Used to adjust parameters of the algorithm to each particular
 /// problem and to change other options. See the fields and methods for a full list of options.
 ///
 /// # Examples
@@ -61,7 +61,7 @@ pub struct CMAESOptions {
     /// [`Plot`][crate::plotting::Plot].
     pub plot_options: Option<PlotOptions>,
     /// How many function evaluations to wait for in between each automatic
-    /// [`CMAESState::print_info`] call. Default value is `None`, meaning no info will be
+    /// [`CMAES::print_info`] call. Default value is `None`, meaning no info will be
     /// automatically printed.
     pub print_gap_evals: Option<usize>,
 }
@@ -146,19 +146,19 @@ impl CMAESOptions {
 
     /// Enables automatic printing of various state variables of the algorithm. A minimum of
     /// `min_gap_evals` function evaluations will be waited for between each
-    /// [`CMAESState::print_info`] call, but it will always be called for the first few generations.
+    /// [`CMAES::print_info`] call, but it will always be called for the first few generations.
     pub fn enable_printing(mut self, min_gap_evals: usize) -> Self {
         self.print_gap_evals = Some(min_gap_evals);
         self
     }
 
-    /// Attempts to build the [`CMAESState`] using the chosen options. See [`CMAESState`] for
+    /// Attempts to build the [`CMAES`] using the chosen options. See [`CMAES`] for
     /// information about the lifetime parameter.
     pub fn build<'a, F: ObjectiveFunction + 'a>(
         self,
         objective_function: F,
-    ) -> Result<CMAESState<'a>, InvalidOptionsError> {
-        CMAESState::new(Box::new(objective_function), self)
+    ) -> Result<CMAES<'a>, InvalidOptionsError> {
+        CMAES::new(Box::new(objective_function), self)
     }
 }
 

@@ -5,8 +5,8 @@
 //! # Quick Start
 //!
 //! To optimize a function, simply create and build a [`CMAESOptions`] and call
-//! [`CMAESState::run`]. Customization of algorithm parameters should be done on a per-problem basis using
-//! [`CMAESOptions`]. See [`Plot`] for generation of data plots.
+//! [`CMAES::run`]. Customization of algorithm parameters should be done on a per-problem basis
+//! using [`CMAESOptions`]. See [`Plot`] for generation of data plots.
 //!
 //! ```no_run
 //! use cmaes::{CMAESOptions, DVector};
@@ -25,7 +25,7 @@
 //! ```
 //!
 //! The [`ObjectiveFunction`] trait allows for custom objective function types to store state and
-//! parameters, and the [`CMAESState::next`] method provides finer control over iteration if needed.
+//! parameters, and the [`CMAES::next`] method provides finer control over iteration if needed.
 //!
 //! See [this paper][0] for details on the algorithm itself. This library is based on the linked
 //! paper and the [pycma][1] implementation.
@@ -37,6 +37,7 @@ pub mod objective_function;
 pub mod options;
 pub mod parameters;
 pub mod plotting;
+mod state;
 mod utils;
 
 pub use nalgebra::DVector;
@@ -60,6 +61,7 @@ use std::{f64, iter};
 use crate::options::InvalidOptionsError;
 use crate::parameters::Parameters;
 use crate::plotting::Plot;
+use crate::state::State;
 
 /// An individual point with its corresponding objective function value.
 #[derive(Clone, Debug)]
@@ -93,8 +95,6 @@ pub struct TerminationData {
 
 #[derive(Clone, Debug)]
 struct InvalidFunctionValueError;
-#[derive(Clone, Debug)]
-struct PosDefCovError;
 
 /// Represents the reason for the algorithm terminating. Most of these are for preventing numerical
 /// instability, while `TolFun` and `TolX` are problem-dependent parameters.
@@ -139,26 +139,26 @@ impl fmt::Display for TerminationReason {
     }
 }
 
-/// Stores the iteration state of and runs the algorithm. Use [`CMAESOptions`] to create a
-/// `CMAESState`.
+/// A type that handles algorithm iteration and printing/plotting of results. Use [`CMAESOptions`]
+/// to create a `CMAES`.
 ///
 /// # Lifetimes
 ///
 /// The objective function may be non-`'static` (i.e., it borrows something), so there is a lifetime
-/// parameter. If this functionality is not needed and the `CMAESState` type must be specified
+/// parameter. If this functionality is not needed and the `CMAES` type must be specified
 /// somewhere, the lifetime can simply be set to `'static`:
 ///
 /// ```
-/// # use cmaes::CMAESState;
-/// struct Container(CMAESState<'static>);
+/// # use cmaes::CMAES;
+/// struct Container(CMAES<'static>);
 /// ```
 ///
 /// In the case of a closure that references variables from its scope, the `move` keyword can be
 /// used to force a static lifetime:
 ///
 /// ```
-/// # use cmaes::{CMAESOptions, CMAESState, DVector};
-/// # struct Container(CMAESState<'static>);
+/// # use cmaes::{CMAESOptions, CMAES, DVector};
+/// # struct Container(CMAES<'static>);
 /// let mut x = 0.0;
 /// let function = move |_: &DVector<f64>| {
 ///     x += 1.0;
@@ -167,55 +167,36 @@ impl fmt::Display for TerminationReason {
 /// let cmaes_state = CMAESOptions::new(2).build(function).unwrap();
 /// let container = Container(cmaes_state);
 /// ```
-pub struct CMAESState<'a> {
+pub struct CMAES<'a> {
     /// The objective function to minimize
     objective_function: Box<dyn ObjectiveFunction + 'a>,
-    /// Constant parameters, see [Parameters]
+    /// Constant parameters
     parameters: Parameters,
-    /// The number of generations that have been fully completed
-    generation: usize,
-    /// The number of times the objective function has been evaluated
-    function_evals: usize,
-    /// The distribution mean
-    mean: DVector<f64>,
-    /// The distribution covariance matrix
-    cov: DMatrix<f64>,
-    /// Normalized eigenvectors of `cov`, forming an orthonormal basis of the matrix
-    cov_eigenvectors: DMatrix<f64>,
-    /// Diagonal matrix containing the square roots of the eigenvalues of `cov`, which are the
-    /// scales of the basis axes
-    cov_sqrt_eigenvalues: DMatrix<f64>,
-    /// The distribution step size
-    sigma: f64,
-    /// Evolution path of the mean used to update the covariance matrix
-    path_c: DVector<f64>,
-    /// Evolution path of the mean used to update the step size
-    path_sigma: DVector<f64>,
-    /// A history of the best function values of the past k generations (see [`CMAESState::next`])
+    /// Variable state
+    state: State,
+    /// A history of the best function values of the past k generations (see [`CMAES::next`])
     /// (values at the front are from more recent generations)
     best_function_values: VecDeque<f64>,
-    /// A history of the median function values of the past k generations (see [`CMAESState::next]`)
+    /// A history of the median function values of the past k generations (see [`CMAES::next]`)
     /// (values at the front are from more recent generations)
     median_function_values: VecDeque<f64>,
     /// The best individual of the latest generation
     current_best_individual: Option<Individual>,
     /// The best individual of any generation
     overall_best_individual: Option<Individual>,
-    /// The last time the eigendecomposition was updated, in function evals
-    last_eigen_update_evals: usize,
     /// RNG from which all random numbers are sourced
     rng: ChaCha12Rng,
     /// Data plot if enabled
     plot: Option<Plot>,
     /// The minimum number of function evaluations to wait for in between each automatic
-    /// [`CMAESState::print_info`] call
+    /// [`CMAES::print_info`] call
     print_gap_evals: Option<usize>,
-    /// The last time [`CMAESState::print_info`] was called, in function evaluations
+    /// The last time [`CMAES::print_info`] was called, in function evaluations
     last_print_evals: usize,
 }
 
-impl<'a> CMAESState<'a> {
-    /// Initializes a `CMAESState` from a set of [`CMAESOptions`]. [`CMAESOptions::build`] should
+impl<'a> CMAES<'a> {
+    /// Initializes a `CMAES` from a set of [`CMAESOptions`]. [`CMAESOptions::build`] should
     /// generally be used instead.
     pub fn new(
         objective_function: Box<dyn ObjectiveFunction + 'a>,
@@ -260,35 +241,19 @@ impl<'a> CMAESState<'a> {
         );
 
         // Initialize variable parameters
-        let mean = options.initial_mean;
-        let cov = DMatrix::identity(options.dimensions, options.dimensions);
-        let eigen = decompose_cov(cov.clone()).unwrap();
-        let cov_eigenvectors = eigen.eigenvectors;
-        let cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
-        let sigma = options.initial_step_size;
-        let path_c = DVector::zeros(options.dimensions);
-        let path_sigma = DVector::zeros(options.dimensions);
+        let state = State::new(options.initial_mean, options.initial_step_size);
 
         // Initialize plot if enabled
         let plot = options.plot_options.map(|o| Plot::new(options.dimensions, o));
 
-        let mut state = Self {
+        let mut cmaes = Self {
             objective_function,
             parameters,
-            generation: 0,
-            function_evals: 0,
-            mean,
-            cov,
-            cov_eigenvectors,
-            cov_sqrt_eigenvalues,
-            sigma,
-            path_c,
-            path_sigma,
+            state,
             best_function_values: VecDeque::new(),
             median_function_values: VecDeque::new(),
             current_best_individual: None,
             overall_best_individual: None,
-            last_eigen_update_evals: 0,
             rng,
             plot,
             print_gap_evals: options.print_gap_evals,
@@ -296,14 +261,14 @@ impl<'a> CMAESState<'a> {
         };
 
         // Plot initial state
-        state.add_plot_point();
+        cmaes.add_plot_point();
 
         // Print initial info
-        if let Some(_) = state.print_gap_evals {
-            state.print_initial_info();
+        if let Some(_) = cmaes.print_gap_evals {
+            cmaes.print_initial_info();
         }
 
-        Ok(state)
+        Ok(cmaes)
     }
 
     /// Iterates the algorithm until termination or until `max_generations` is reached. If no
@@ -350,12 +315,12 @@ impl<'a> CMAESState<'a> {
                     (0..params.dim()).map(|_| normal.sample(&mut self.rng)),
                 )
             })
-            .map(|zk| &self.cov_eigenvectors * &self.cov_sqrt_eigenvalues * zk)
+            .map(|zk| self.state.cov_eigenvectors() * self.state.cov_sqrt_eigenvalues() * zk)
             .collect::<Vec<_>>();
         // Transform steps in y to the final distribution of N(mean, sigma^2 * cov)
         let z = y
             .iter()
-            .map(|yk| &self.mean + self.sigma * yk)
+            .map(|yk| self.state.mean() + self.state.sigma() * yk)
             .collect::<Vec<_>>();
 
         // Evaluate and rank steps by evaluating their transformed counterparts
@@ -365,13 +330,11 @@ impl<'a> CMAESState<'a> {
             .zip(z.iter().map(|zk| self.objective_function.evaluate(zk)))
             .collect::<Vec<_>>();
 
-        self.function_evals += individuals.len();
-
         individuals.sort_by(|a, b| utils::partial_cmp(&a.1, &b.1));
 
         // Update histories of best and median values
         let (best_step, best_value) = individuals[0].clone();
-        let best_individual = &self.mean + self.sigma * best_step;
+        let best_individual = self.state.mean() + self.state.sigma() * best_step;
 
         self.best_function_values.push_front(best_value);
         if self.best_function_values.len() > past_generations_to_store {
@@ -402,18 +365,10 @@ impl<'a> CMAESState<'a> {
     pub fn next(&mut self) -> Option<TerminationData> {
         let dim = self.parameters.dim();
         let lambda = self.parameters.lambda();
-        let mu = self.parameters.mu();
-        let mu_eff = self.parameters.mu_eff();
-        let cc = self.parameters.cc();
-        let c1 = self.parameters.c1();
-        let cs = self.parameters.cs();
-        let cmu = self.parameters.cmu();
-        let cm = self.parameters.cm();
-        let damp_s = self.parameters.damp_s();
 
         // How many generations to store in self.best_function_values and
         // self.median_function_value
-        let past_generations_to_store = ((0.2 * self.generation as f64).ceil() as usize)
+        let past_generations_to_store = ((0.2 * self.state.generation() as f64).ceil() as usize)
             .max(
                 120 + (30.0 * dim as f64 / lambda as f64).ceil()
                     as usize,
@@ -428,100 +383,16 @@ impl<'a> CMAESState<'a> {
             }
         };
 
-        let params = &self.parameters;
-
-        // Calculate new mean through weighted recombination
-        // Only the mu best individuals are used even if there are lambda weights
-        let yw = individuals
-            .iter()
-            .take(mu)
-            .enumerate()
-            .map(|(i, (y, _))| y * self.parameters.weights()[i])
-            .sum::<DVector<f64>>();
-        self.mean = &self.mean + &(cm * self.sigma * &yw);
-
-        // Update evolution paths
-        let sqrt_inv_c = &self.cov_eigenvectors
-            * DMatrix::from_diagonal(&self.cov_sqrt_eigenvalues.map_diagonal(|d| 1.0 / d))
-            * self.cov_eigenvectors.transpose();
-
-        self.path_sigma = (1.0 - cs) * &self.path_sigma
-            + (cs * (2.0 - cs) * mu_eff).sqrt() * &sqrt_inv_c * &yw;
-
-        // Expectation of N(0, I)
-        let chi_n = (dim as f64).sqrt()
-            * (1.0 - 1.0 / (4.0 * dim as f64) + 1.0 / (21.0 * dim.pow(2) as f64));
-
-        let hs = if (self.path_sigma.magnitude()
-            / (1.0 - (1.0 - cs).powi(2 * (self.generation as i32 + 1))).sqrt())
-            < (1.4 + 2.0 / (dim as f64 + 1.0)) * chi_n
-        {
-            1.0
-        } else {
-            0.0
-        };
-
-        self.path_c = (1.0 - cc) * &self.path_c
-            + hs * (cc * (2.0 - cc) * mu_eff).sqrt() * &yw;
-
-        // Update step size
-        self.sigma *=
-            ((cs / damp_s) * ((self.path_sigma.magnitude() / chi_n) - 1.0)).exp();
-
-        // Update covariance matrix
-        let weights_cov = params
-            .weights()
-            .iter()
-            .enumerate()
-            .map(|(i, w)| {
-                *w * if *w >= 0.0 {
-                    1.0
-                } else {
-                    dim as f64 / (&sqrt_inv_c * &individuals[i].0).magnitude().powi(2)
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let delta_hs = (1.0 - hs) * cc * (2.0 - cc);
-        self.cov = (1.0 + c1 * delta_hs
-            - c1
-            - cmu * self.parameters.weights().iter().sum::<f64>())
-            * &self.cov
-            + c1 * &self.path_c * self.path_c.transpose()
-            + cmu
-                * weights_cov
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, wc)| wc * &individuals[i].0 * individuals[i].0.transpose())
-                    .sum::<DMatrix<f64>>();
-
-        // Ensure symmetry
-        self.cov.fill_lower_triangle_with_upper_triangle();
-
-        // Update eigendecomposition occasionally (updating every generation is unnecessary and
-        // inefficient for high dim)
-        let evals_per_eigen = (0.5 * dim as f64 * lambda as f64
-            / ((c1 + cmu) * dim.pow(2) as f64))
-            as usize;
-
-        if self.function_evals > self.last_eigen_update_evals + evals_per_eigen {
-            self.last_eigen_update_evals = self.function_evals;
-
-            match decompose_cov(self.cov.clone()) {
-                Ok(eigen) => {
-                    self.cov_eigenvectors = eigen.eigenvectors;
-                    self.cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
-                }
-                Err(_) => return Some(self.get_termination_data(TerminationReason::PosDefCov)),
-            };
+        // Update state
+        if let Err(_) = self.state.update(&self.parameters, &individuals) {
+            return Some(self.get_termination_data(TerminationReason::PosDefCov));
         }
-
-        self.generation += 1;
 
         // Plot latest state
         if let Some(ref plot) = self.plot {
             // Always plot the first generation
-            if self.generation <= 1 || self.function_evals >= plot.get_next_data_point_evals() {
+            if self.state.generation() <= 1
+                || self.state.function_evals() >= plot.get_next_data_point_evals() {
                 self.add_plot_point();
             }
         }
@@ -529,10 +400,10 @@ impl<'a> CMAESState<'a> {
         // Print latest state
         if let Some(gap_evals) = self.print_gap_evals {
             // The first few generations are always printed, then print_gap_evals is respected
-            if self.function_evals >= self.last_print_evals + gap_evals {
+            if self.state.function_evals() >= self.last_print_evals + gap_evals {
                 self.print_info();
-                self.last_print_evals = self.function_evals;
-            } else if self.generation < 4 {
+                self.last_print_evals = self.state.function_evals();
+            } else if self.state.generation() < 4 {
                 // Don't update last_print_evals so the printed generation numbers can remain
                 // multiples of 10
                 self.print_info();
@@ -575,16 +446,12 @@ impl<'a> CMAESState<'a> {
         let tol_fun = self.parameters.tol_fun();
         let tol_x = self.parameters.tol_x();
 
-        let Self {
-            ref generation,
-            ref mean,
-            ref cov,
-            ref cov_eigenvectors,
-            ref cov_sqrt_eigenvalues,
-            ref sigma,
-            ref path_c,
-            ..
-        } = self;
+        let mean = self.state.mean();
+        let cov = self.state.cov();
+        let cov_eigenvectors = self.state.cov_eigenvectors();
+        let cov_sqrt_eigenvalues = self.state.cov_sqrt_eigenvalues();
+        let sigma = self.state.sigma();
+        let path_c = self.state.path_c();
 
         // Check TerminationReason::TolFun
         let past_generations_a = 10 + (30.0 * dim as f64 / lambda as f64).ceil() as usize;
@@ -614,8 +481,8 @@ impl<'a> CMAESState<'a> {
         }
 
         // Check TerminationReason::TolX
-        if (0..dim).all(|i| (*sigma * cov[(i, i)]).abs() < tol_x)
-            && path_c.iter().all(|x| (*sigma * *x).abs() < tol_x)
+        if (0..dim).all(|i| (sigma * cov[(i, i)]).abs() < tol_x)
+            && path_c.iter().all(|x| (sigma * *x).abs() < tol_x)
         {
             return Some(TerminationReason::TolX);
         }
@@ -629,10 +496,10 @@ impl<'a> CMAESState<'a> {
 
         // Check TerminationReason::NoEffectAxis
         // Cycles from 0 to n-1 to avoid checking every column every iteration
-        let index_to_check = *generation % dim;
+        let index_to_check = self.state.generation() % dim;
 
         let no_effect_axis_check = 0.1
-            * *sigma
+            * sigma
             * cov_sqrt_eigenvalues[(index_to_check, index_to_check)]
             * cov_eigenvectors.column(index_to_check);
 
@@ -641,7 +508,7 @@ impl<'a> CMAESState<'a> {
         }
 
         // Check TerminationReason::NoEffectCoord
-        if (0..dim).any(|i| mean[i] == mean[i] + 0.2 * *sigma * cov[(i, i)]) {
+        if (0..dim).any(|i| mean[i] == mean[i] + 0.2 * sigma * cov[(i, i)]) {
             return Some(TerminationReason::NoEffectCoord);
         }
 
@@ -693,7 +560,7 @@ impl<'a> CMAESState<'a> {
         }
 
         // Check TerminationReason::TolXUp
-        let max_standard_deviation = *sigma
+        let max_standard_deviation = sigma
             * cov_sqrt_eigenvalues
                 .diagonal()
                 .iter()
@@ -719,38 +586,37 @@ impl<'a> CMAESState<'a> {
 
     /// Returns the number of generations that have been completed.
     pub fn generation(&self) -> usize {
-        self.generation
+        self.state.generation()
     }
 
     /// Returns the number of times the objective function has been evaluated.
     pub fn function_evals(&self) -> usize {
-        self.function_evals
+        self.state.function_evals()
     }
 
     /// Returns the current mean of the distribution.
     pub fn mean(&self) -> &DVector<f64> {
-        &self.mean
+        self.state.mean()
     }
 
     /// Returns the current covariance matrix of the distribution.
     pub fn covariance_matrix(&self) -> &DMatrix<f64> {
-        &self.cov
+        self.state.cov()
     }
 
     /// Returns the current eigenvalues of the distribution.
     pub fn eigenvalues(&self) -> DVector<f64> {
-        self.cov_sqrt_eigenvalues.diagonal().map(|x| x.powi(2))
+        self.state.cov_sqrt_eigenvalues().diagonal().map(|x| x.powi(2))
     }
 
     /// Returns the current step size of the distribution.
     pub fn sigma(&self) -> f64 {
-        self.sigma
+        self.state.sigma()
     }
 
     /// Returns the current axis ratio of the distribution.
     pub fn axis_ratio(&self) -> f64 {
-        let diag = self.cov_sqrt_eigenvalues.diagonal();
-        diag.max() / diag.min()
+        self.state.axis_ratio()
     }
 
     /// Returns the best individual of the latest generation and its function value. Will always
@@ -780,7 +646,7 @@ impl<'a> CMAESState<'a> {
         return TerminationData {
             current_best: self.current_best_individual().unwrap().clone(),
             overall_best: self.overall_best_individual().unwrap().clone(),
-            final_mean: self.mean.clone(),
+            final_mean: self.state.mean().clone(),
             reason,
         };
     }
@@ -788,10 +654,8 @@ impl<'a> CMAESState<'a> {
     /// Adds a data point to the data plot if enabled and not already called this generation. Can be
     /// called manually after termination to plot the final state if [`run`][Self::run] isn't used.
     pub fn add_plot_point(&mut self) {
-        // The plot is swapped out temporarily to avoid borrower issues
-        if let Some(mut plot) = self.plot.take() {
-            plot.add_data_point(&*self);
-            self.plot = Some(plot);
+        if let Some(ref mut plot) = self.plot {
+            plot.add_data_point(&self.state, self.current_best_individual.as_ref());
         }
     }
 
@@ -840,17 +704,17 @@ impl<'a> CMAESState<'a> {
     ///
     /// This function is called automatically if [`CMAESOptions::enable_printing`] is set.
     pub fn print_info(&self) {
-        let generations = format!("{:7}", self.generation);
-        let evals = format!("{:7}", self.function_evals);
+        let generations = format!("{:7}", self.state.generation());
+        let evals = format!("{:7}", self.state.function_evals());
         let best_function_value = self
             .current_best_individual()
             .map(|x| utils::format_num(x.value, 19))
             .unwrap_or(format!("{:19}", ""));
         let axis_ratio = utils::format_num(self.axis_ratio(), 11);
-        let sigma = utils::format_num(self.sigma, 11);
-        let cov_diag = self.cov.diagonal();
-        let min_std = utils::format_num(self.sigma * cov_diag.min().sqrt(), 11);
-        let max_std = utils::format_num(self.sigma * cov_diag.max().sqrt(), 11);
+        let sigma = utils::format_num(self.state.sigma(), 11);
+        let cov_diag = self.state.cov().diagonal();
+        let min_std = utils::format_num(self.state.sigma() * cov_diag.min().sqrt(), 11);
+        let max_std = utils::format_num(self.state.sigma() * cov_diag.max().sqrt(), 11);
 
         // The preceding space for values that can't have a negative sign is removed (an extra
         // digit takes its place)
@@ -872,7 +736,7 @@ impl<'a> CMAESState<'a> {
     /// called manually after termination to print the final state if [`run`][`Self::run`] isn't
     /// used.
     pub fn print_final_info(&self, termination_reason: Option<TerminationReason>) {
-        if self.function_evals != self.last_print_evals {
+        if self.state.function_evals() != self.last_print_evals {
             self.print_info();
         }
 
@@ -887,88 +751,97 @@ impl<'a> CMAESState<'a> {
         if let (Some(current), Some(overall)) = (current_best, overall_best) {
             println!("Current best function value: {:e}", current.value);
             println!("Overall best function value: {:e}", overall.value);
-            println!("Final mean: {}", self.mean);
+            println!("Final mean: {}", self.state.mean());
         }
-    }
-}
-
-/// Decomposition of a covariance matrix
-struct CovDecomposition {
-    /// Columns are eigenvectors
-    eigenvectors: DMatrix<f64>,
-    /// Diagonal matrix with square roots of eigenvalues
-    sqrt_eigenvalues: DMatrix<f64>,
-}
-
-/// Decomposes a covariance matrix into a set of normalized eigenvectors and a diagonal matrix
-/// containing the square roots of the corresponding eigenvalues
-///
-/// Returns `Err` if the matrix is not positive-definite
-fn decompose_cov(matrix: DMatrix<f64>) -> Result<CovDecomposition, PosDefCovError> {
-    let mut eigen = nalgebra_lapack::SymmetricEigen::new(matrix);
-
-    for mut col in eigen.eigenvectors.column_iter_mut() {
-        col.normalize_mut();
-    }
-
-    if eigen.eigenvalues.iter().any(|x| *x <= 0.0) {
-        Err(PosDefCovError)
-    } else {
-        Ok(CovDecomposition {
-            eigenvectors: eigen.eigenvectors,
-            sqrt_eigenvalues: DMatrix::from_diagonal(&eigen.eigenvalues.map(|x| x.sqrt())),
-        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use assert_approx_eq::assert_approx_eq;
-    use nalgebra::{DMatrix, DVector};
-
     use super::*;
+    use crate::state::decompose_cov_pub;
 
     fn dummy_function(_: &DVector<f64>) -> f64 {
         0.0
     }
 
     #[test]
-    fn test_decompose_cov() {
-        let matrix = DMatrix::from_iterator(2, 2, [3.0, 1.5, 1.5, 2.0]);
+    fn test_get_best_individuals() {
+        let mut cmaes = CMAESOptions::new(10).build(dummy_function).unwrap();
 
-        let eigen = decompose_cov(matrix.clone()).unwrap();
+        assert!(cmaes.current_best_individual().is_none());
+        assert!(cmaes.overall_best_individual().is_none());
 
-        let reconstructed = eigen.eigenvectors.clone()
-            * eigen.sqrt_eigenvalues.pow(2)
-            * eigen.eigenvectors.transpose();
+        let _ = cmaes.next();
 
-        for x in (reconstructed - matrix).iter() {
-            assert_approx_eq!(x, 0.0);
-        }
+        assert!(cmaes.current_best_individual().is_some());
+        assert!(cmaes.overall_best_individual().is_some());
     }
 
     #[test]
+    fn test_update_best_individuals() {
+        let dim = 10;
+        let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
+        let origin = DVector::from(vec![0.0; dim]);
+
+        cmaes.update_best_individuals(Individual::new(origin.clone(), 1.0));
+        assert_eq!(cmaes.current_best_individual().unwrap().value, 1.0);
+        assert_eq!(cmaes.overall_best_individual().unwrap().value, 1.0);
+
+        cmaes.update_best_individuals(Individual::new(origin.clone(), 2.0));
+        assert_eq!(cmaes.current_best_individual().unwrap().value, 2.0);
+        assert_eq!(cmaes.overall_best_individual().unwrap().value, 1.0);
+
+        cmaes.update_best_individuals(Individual::new(origin.clone(), 1.5));
+        assert_eq!(cmaes.current_best_individual().unwrap().value, 1.5);
+        assert_eq!(cmaes.overall_best_individual().unwrap().value, 1.0);
+
+        cmaes.update_best_individuals(Individual::new(origin.clone(), 0.5));
+        assert_eq!(cmaes.current_best_individual().unwrap().value, 0.5);
+        assert_eq!(cmaes.overall_best_individual().unwrap().value, 0.5);
+    }
+
+    #[test]
+    fn test_run_final_plot() {
+        let evals_per_plot_point = 100;
+        let mut cmaes = CMAESOptions::new(10)
+            .enable_plot(PlotOptions::new(evals_per_plot_point, false))
+            .build(|_: &DVector<f64>| 0.0)
+            .unwrap();
+
+        // The initial state is always plotted
+        assert_eq!(cmaes.get_plot().unwrap().len(), 1);
+
+        let _ = cmaes.run(1);
+
+        // The final state is always plotted when using CMAES::run, regardless of
+        // evals_per_plot_point
+        assert_eq!(cmaes.get_plot().unwrap().len(), 2);
+    }
+
+    // TODO: move these to termination module and remove unnecessary cfg(test) items
+    #[test]
     fn test_check_termination_criteria_none() {
         let dim = 2;
-        let cmaes_state = CMAESOptions::new(dim).build(dummy_function).unwrap();
+        let cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
         assert_eq!(
-            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             None,
         );
 
         // A large standard deviation in one axis should not meet any termination criteria if the
         // initial step size was also large
-        let mut cmaes_state = CMAESOptions::new(dim)
+        let mut cmaes = CMAESOptions::new(dim)
             .initial_step_size(1e3)
             .build(dummy_function)
             .unwrap();
-        cmaes_state.sigma = 1e4;
-        cmaes_state.cov = DMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e4]);
-        let eigen = decompose_cov(cmaes_state.cov.clone()).unwrap();
-        cmaes_state.cov_eigenvectors = eigen.eigenvectors;
-        cmaes_state.cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
+        *cmaes.state.mut_sigma() = 1e4;
+        *cmaes.state.mut_cov() = DMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e4]);
+        let (eigenvectors, sqrt_eigenvalues) = decompose_cov_pub(cmaes.state.cov().clone()).unwrap();
+        *cmaes.state.mut_cov_eigenvectors() = eigenvectors;
+        *cmaes.state.mut_cov_sqrt_eigenvalues() = sqrt_eigenvalues;
         assert_eq!(
-            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             None,
         );
     }
@@ -978,11 +851,11 @@ mod tests {
         // A population of below-tolerance function values and a small range of historical values
         // produces TolFun
         let dim = 2;
-        let mut cmaes_state = CMAESOptions::new(dim).build(dummy_function).unwrap();
-        cmaes_state.best_function_values.extend(vec![1.0; 100]);
-        cmaes_state.best_function_values.push_front(1.0 + 1e-13);
+        let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
+        cmaes.best_function_values.extend(vec![1.0; 100]);
+        cmaes.best_function_values.push_front(1.0 + 1e-13);
         assert_eq!(
-            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             Some(TerminationReason::TolFun),
         );
     }
@@ -991,10 +864,10 @@ mod tests {
     fn test_check_termination_criteria_tol_x() {
         // A small step size and evolution path produces TolX
         let dim = 2;
-        let mut cmaes_state = CMAESOptions::new(dim).build(dummy_function).unwrap();
-        cmaes_state.sigma = 1e-13;
+        let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
+        *cmaes.state.mut_sigma() = 1e-13;
         assert_eq!(
-            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             Some(TerminationReason::TolX),
         );
     }
@@ -1003,12 +876,12 @@ mod tests {
     fn test_check_termination_criteria_equal_fun_values() {
         // A zero range of historical values produces EqualFunValues
         let dim = 2;
-        let mut cmaes_state = CMAESOptions::new(dim).build(dummy_function).unwrap();
-        cmaes_state.best_function_values.extend(vec![1.0; 100]);
+        let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
+        cmaes.best_function_values.extend(vec![1.0; 100]);
         // Equal to 1.0 due to lack of precision
-        cmaes_state.best_function_values.push_front(1.0 + 1e-17);
+        cmaes.best_function_values.push_front(1.0 + 1e-17);
         assert_eq!(
-            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 1.0); 100], 100),
+            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 1.0); 100], 100),
             Some(TerminationReason::EqualFunValues),
         );
     }
@@ -1018,16 +891,16 @@ mod tests {
         // Median/best function values that change but don't improve for many generations produces
         // Stagnation
         let dim = 2;
-        let mut cmaes_state = CMAESOptions::new(dim).build(dummy_function).unwrap();
+        let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
         let mut values = Vec::new();
         values.extend(vec![1.0; 10]);
         values.extend(vec![2.0; 10]);
         values.extend(vec![2.0; 10]);
         values.extend(vec![1.0; 10]);
-        cmaes_state.best_function_values.extend(values.clone());
-        cmaes_state.median_function_values.extend(values.clone());
+        cmaes.best_function_values.extend(values.clone());
+        cmaes.median_function_values.extend(values.clone());
         assert_eq!(
-            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 1.0); 100], 40),
+            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 1.0); 100], 40),
             Some(TerminationReason::Stagnation),
         );
     }
@@ -1036,10 +909,10 @@ mod tests {
     fn test_check_termination_criteria_tol_x_up() {
         // A large increase in maximum standard deviation produces TolXUp
         let dim = 2;
-        let mut cmaes_state = CMAESOptions::new(dim).build(dummy_function).unwrap();
-        cmaes_state.sigma = 1e8;
+        let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
+        *cmaes.state.mut_sigma() = 1e8;
         assert_eq!(
-            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             Some(TerminationReason::TolXUp),
         );
     }
@@ -1049,24 +922,24 @@ mod tests {
         // A lack of available precision along a principal axis in the distribution produces
         // NoEffectAxis
         let dim = 2;
-        let mut cmaes_state = CMAESOptions::new(dim).build(dummy_function).unwrap();
+        let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
         let eigenvectors = [
             DVector::from(vec![3.0, 2.0]).normalize(),
             DVector::from(vec![-2.0, 3.0]).normalize(),
         ];
-        cmaes_state.mean = vec![100.0; 2].into();
-        cmaes_state.sigma = 1e-10;
-        cmaes_state.cov_eigenvectors = DMatrix::from_columns(&eigenvectors);
-        cmaes_state.cov_sqrt_eigenvalues = DMatrix::from_diagonal(&vec![1e-1, 1e-6].into());
-        cmaes_state.cov = &cmaes_state.cov_eigenvectors
-            * &cmaes_state.cov_sqrt_eigenvalues.pow(2)
-            * &cmaes_state.cov_eigenvectors.transpose();
+        *cmaes.state.mut_mean() = vec![100.0; 2].into();
+        *cmaes.state.mut_sigma() = 1e-10;
+        *cmaes.state.mut_cov_eigenvectors() = DMatrix::from_columns(&eigenvectors);
+        *cmaes.state.mut_cov_sqrt_eigenvalues() = DMatrix::from_diagonal(&vec![1e-1, 1e-6].into());
+        *cmaes.state.mut_cov() = cmaes.state.cov_eigenvectors()
+            * cmaes.state.cov_sqrt_eigenvalues().pow(2)
+            * cmaes.state.cov_eigenvectors().transpose();
 
         let mut terminated = false;
         for g in 0..dim {
-            cmaes_state.generation = g;
+            *cmaes.state.mut_generation() = g;
             let termination_reason =
-                cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100);
+                cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100);
             if let Some(reason) = termination_reason {
                 assert_eq!(reason, TerminationReason::NoEffectAxis);
                 terminated = true;
@@ -1080,19 +953,19 @@ mod tests {
         // A lack of available precision along a coordinate axis in the distribution produces
         // NoEffectCoord
         let dim = 2;
-        let mut cmaes_state = CMAESOptions::new(dim).build(dummy_function).unwrap();
-        cmaes_state.mean = vec![100.0; 2].into();
-        cmaes_state.cov_eigenvectors = DMatrix::identity(2, 2);
-        cmaes_state.cov_sqrt_eigenvalues = DMatrix::from_diagonal(&vec![1e-4, 1e-10].into());
-        cmaes_state.cov = &cmaes_state.cov_eigenvectors
-            * &cmaes_state.cov_sqrt_eigenvalues.pow(2)
-            * &cmaes_state.cov_eigenvectors.transpose();
+        let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
+        *cmaes.state.mut_mean() = vec![100.0; 2].into();
+        *cmaes.state.mut_cov_eigenvectors() = DMatrix::identity(2, 2);
+        *cmaes.state.mut_cov_sqrt_eigenvalues() = DMatrix::from_diagonal(&vec![1e-4, 1e-10].into());
+        *cmaes.state.mut_cov() = cmaes.state.cov_eigenvectors()
+            * cmaes.state.cov_sqrt_eigenvalues().pow(2)
+            * cmaes.state.cov_eigenvectors().transpose();
 
         let mut terminated = false;
         for g in 0..dim {
-            cmaes_state.generation = g;
+            *cmaes.state.mut_generation() = g;
             let termination_reason =
-                cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100);
+                cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100);
             if let Some(reason) = termination_reason {
                 assert_eq!(reason, TerminationReason::NoEffectCoord);
                 terminated = true;
@@ -1106,13 +979,13 @@ mod tests {
         // A large difference between the maximum and minimum standard deviations produces
         // ConditionCov
         let dim = 2;
-        let mut cmaes_state = CMAESOptions::new(dim).build(dummy_function).unwrap();
-        cmaes_state.cov = DMatrix::from_iterator(2, 2, [0.99, 0.0, 0.0, 1e14]);
-        let eigen = decompose_cov(cmaes_state.cov.clone()).unwrap();
-        cmaes_state.cov_eigenvectors = eigen.eigenvectors;
-        cmaes_state.cov_sqrt_eigenvalues = eigen.sqrt_eigenvalues;
+        let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
+        *cmaes.state.mut_cov() = DMatrix::from_iterator(2, 2, [0.99, 0.0, 0.0, 1e14]);
+        let (eigenvectors, sqrt_eigenvalues) = decompose_cov_pub(cmaes.state.cov().clone()).unwrap();
+        *cmaes.state.mut_cov_eigenvectors() = eigenvectors;
+        *cmaes.state.mut_cov_sqrt_eigenvalues() = sqrt_eigenvalues;
         assert_eq!(
-            cmaes_state.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
             Some(TerminationReason::ConditionCov),
         );
     }

@@ -20,7 +20,8 @@ use std::io;
 use std::ops::Range;
 use std::path::Path;
 
-use crate::{utils, CMAESState};
+use crate::{utils, Individual};
+use crate::state::State;
 
 /// The drawing backend to use for rendering the plot.
 pub type Backend<'a> = BitMapBackend<'a>;
@@ -64,11 +65,20 @@ impl PlotData {
         }
     }
 
+    /// Returns the number of data points currently being stored
+    fn len(&self) -> usize {
+        self.function_evals.len()
+    }
+
+    /// Returns the number of data points for which space has been allocated
+    fn capacity(&self) -> usize {
+        self.function_evals.capacity()
+    }
+
     /// Adds a data point to the plot from the current state
-    fn add_data_point(&mut self, state: &CMAESState) {
+    fn add_data_point(&mut self, state: &State, current_best_individual: Option<&Individual>) {
         self.function_evals.push(state.function_evals());
-        let best_function_value = state
-            .current_best_individual()
+        let best_function_value = current_best_individual
             .map(|x| x.value)
             // At 0 function evals there isn't a best individual yet, so assign it NAN and filter it
             // later
@@ -77,7 +87,7 @@ impl PlotData {
             .push(apply_offset(best_function_value));
         self.sigma.push(apply_offset(state.sigma()));
 
-        let mut sqrt_eigenvalues = state.eigenvalues().map(|x| x.sqrt());
+        let mut sqrt_eigenvalues = state.cov_sqrt_eigenvalues().diagonal();
         self.axis_ratio.push(apply_offset(state.axis_ratio()));
 
         let mean = state.mean();
@@ -91,14 +101,15 @@ impl PlotData {
             self.sqrt_eigenvalues[i].push(apply_offset(*x));
         }
 
-        let cov_diagonal = state.covariance_matrix().diagonal();
+        let cov_diagonal = state.cov().diagonal();
         let coord_axis_scales = cov_diagonal.iter().map(|x| x.sqrt());
         for (i, x) in coord_axis_scales.enumerate() {
             self.coord_axis_scales[i].push(apply_offset(x));
         }
     }
 
-    /// Clears the plot except for the most recent data point in each history.
+    /// Clears the plot except for the most recent data point in each history (note that the
+    /// memory is not actually freed; it is only cleared for reuse).
     fn clear(&mut self) {
         let clear = |data: &mut Vec<_>| {
             let len = data.len();
@@ -148,10 +159,11 @@ impl PlotOptions {
     }
 }
 
-/// Data plot for the algorithm. Can be obtained by calling [`CMAESState::get_plot`] or
-/// [`CMAESState::get_mut_plot`] and should be saved with [`save_to_file`][`Self::save_to_file`].
-/// Configuration is done using [`PlotOptions`]. To enable the plot, use
-/// [`CMAESOptions::enable_plot`][crate::CMAESOptions::enable_plot].
+/// Data plot for the algorithm. Can be obtained by calling
+/// [`CMAES::get_plot`][crate::CMAES::get_plot] or
+/// [`CMAES::get_mut_plot`][crate::CMAES::get_mut_plot] and should be saved with
+/// [`save_to_file`][`Self::save_to_file`]. Configuration is done using [`PlotOptions`]. To enable
+/// the plot, use [`CMAESOptions::enable_plot`][crate::CMAESOptions::enable_plot].
 ///
 /// Plots for each iteration the:
 /// - Distance from the minimum objective function value
@@ -167,14 +179,14 @@ impl PlotOptions {
 /// use cmaes::{CMAESOptions, DVector, PlotOptions};
 ///
 /// let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
-/// let mut cmaes_state = CMAESOptions::new(10)
+/// let mut state = CMAESOptions::new(10)
 ///     .enable_plot(PlotOptions::new(0, false))
 ///     .build(sphere)
 ///     .unwrap();
 ///
-/// let result = cmaes_state.run(20000);
+/// let result = state.run(20000);
 ///
-/// cmaes_state.get_plot().unwrap().save_to_file("plot.png", true).unwrap();
+/// state.get_plot().unwrap().save_to_file("plot.png", true).unwrap();
 /// ```
 ///
 /// The produced plot wil look like this:
@@ -190,6 +202,9 @@ pub struct Plot {
     /// The last time a data point was recorded, in function evals
     /// Is None if no data points have been recorded yet
     last_data_point_evals: Option<usize>,
+    /// Like last_data_point_evals, but tracks the generation number of the last data point
+    /// recorded
+    last_data_point_generation: Option<usize>,
 }
 
 impl Plot {
@@ -199,6 +214,7 @@ impl Plot {
             data: PlotData::new(dimensions),
             options,
             last_data_point_evals: None,
+            last_data_point_generation: None,
         }
     }
 
@@ -211,14 +227,19 @@ impl Plot {
     }
 
     /// Adds a data point to the plot from the current state if not already called this generation.
-    pub(crate) fn add_data_point(&mut self, state: &CMAESState) {
-        let already_added = match self.last_data_point_evals {
-            Some(evals) => evals == state.function_evals(),
+    pub(crate) fn add_data_point(
+        &mut self,
+        state: &State,
+        current_best_individual: Option<&Individual>,
+    ) {
+        let already_added = match self.last_data_point_generation {
+            Some(generation) => generation == state.generation(),
             None => false,
         };
         if !already_added {
-            self.data.add_data_point(state);
+            self.data.add_data_point(state, current_best_individual);
             self.last_data_point_evals = Some(state.function_evals());
+            self.last_data_point_generation = Some(state.generation());
         }
     }
 
@@ -263,9 +284,19 @@ impl Plot {
         Ok(root_area)
     }
 
+    /// Returns the number of data points currently stored in the plot.
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns the number of data points for which space has been allocated.
+    pub fn capacity(&self) -> usize {
+        self.data.capacity()
+    }
+
     /// Clears the plot data except for the most recent data point for each variable. Can be called
     /// after using [`save_to_file`][`Plot::save_to_file`] (or not) to avoid endlessly growing
-    /// allocations.
+    /// allocations (note that the memory is not actually freed; it is simply cleared for reuse).
     pub fn clear(&mut self) {
         self.data.clear();
     }
@@ -717,17 +748,17 @@ mod tests {
 
     #[test]
     fn test_plot_not_enabled() {
-        let cmaes_state = CMAESOptions::new(10).build(|_: &DVector<f64>| 0.0).unwrap();
-        assert!(cmaes_state.get_plot().is_none());
+        let state = CMAESOptions::new(10).build(|_: &DVector<f64>| 0.0).unwrap();
+        assert!(state.get_plot().is_none());
     }
 
     #[test]
     fn test_plot_empty() {
-        let cmaes_state = CMAESOptions::new(10)
+        let state = CMAESOptions::new(10)
             .enable_plot(PlotOptions::new(0, false))
             .build(|_: &DVector<f64>| 0.0)
             .unwrap();
-        let plot = cmaes_state.get_plot().unwrap();
+        let plot = state.get_plot().unwrap();
         assert!(plot
             .save_to_file(get_plot_path("test_plot_empty"), true)
             .is_ok())
@@ -735,35 +766,66 @@ mod tests {
 
     #[test]
     fn test_plot() {
-        let mut cmaes_state = CMAESOptions::new(10)
+        let mut state = CMAESOptions::new(10)
             .enable_plot(PlotOptions::new(0, false))
             .build(|_: &DVector<f64>| 0.0)
             .unwrap();
 
         for _ in 0..10 {
-            let _ = cmaes_state.next();
+            let _ = state.next();
         }
 
-        let plot = cmaes_state.get_plot().unwrap();
+        let plot = state.get_plot().unwrap();
         assert!(plot.save_to_file(get_plot_path("test_plot"), true).is_ok());
     }
 
     #[test]
-    fn test_plot_clear() {
-        let mut cmaes_state = CMAESOptions::new(10)
+    fn test_redundant_plot() {
+        let mut state = CMAESOptions::new(10)
             .enable_plot(PlotOptions::new(0, false))
             .build(|_: &DVector<f64>| 0.0)
             .unwrap();
 
-        cmaes_state.get_mut_plot().unwrap().clear();
-
         for _ in 0..10 {
-            let _ = cmaes_state.next();
+            let _ = state.add_plot_point();
         }
 
-        cmaes_state.get_mut_plot().unwrap().clear();
+        // Redundant add_plot_point calls are ignored
+        assert_eq!(state.get_plot().unwrap().len(), 1);
+    }
 
-        let plot = cmaes_state.get_plot().unwrap();
+    #[test]
+    fn test_plot_clear() {
+        let mut state = CMAESOptions::new(10)
+            .enable_plot(PlotOptions::new(0, false))
+            .build(|_: &DVector<f64>| 0.0)
+            .unwrap();
+
+        // Fresh plots contain one element
+        assert_eq!(state.get_plot().unwrap().len(), 1);
+        assert_eq!(state.get_plot().unwrap().capacity(), 4);
+
+        // Clear a fresh plot
+        state.get_mut_plot().unwrap().clear();
+
+        // Clearing leaves one element behind
+        assert_eq!(state.get_plot().unwrap().len(), 1);
+        assert_eq!(state.get_plot().unwrap().capacity(), 4);
+
+        for _ in 0..10 {
+            let _ = state.next();
+        }
+
+        assert_eq!(state.get_plot().unwrap().len(), 11);
+        assert_eq!(state.get_plot().unwrap().capacity(), 16);
+
+        // Clear a plot after adding some data
+        state.get_mut_plot().unwrap().clear();
+
+        assert_eq!(state.get_plot().unwrap().len(), 1);
+        assert_eq!(state.get_plot().unwrap().capacity(), 16);
+
+        let plot = state.get_plot().unwrap();
         assert!(plot
             .save_to_file(get_plot_path("test_plot_clear"), true)
             .is_ok());

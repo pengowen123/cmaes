@@ -1,4 +1,4 @@
-use cmaes::{CMAESOptions, CMAESState, DVector, PlotOptions, TerminationData, Weights};
+use cmaes::{CMAESOptions, CMAES, DVector, PlotOptions, TerminationData, Weights};
 use criterion::{BatchSize, criterion_group, criterion_main, Criterion};
 use rand;
 
@@ -12,9 +12,9 @@ fn rosenbrock(x: &DVector<f64>) -> f64 {
         .sum::<f64>()
 }
 
-// Builds a `CMAESState` with a random initial mean and advances it some number of iterations to
+// Builds a `CMAES` with a random initial mean and advances it some number of iterations to
 // avoid benchmarking based on the trivial initial state
-fn get_cmaes_state(dim: usize, weights: Weights, plot: bool) -> CMAESState<'static> {
+fn get_cmaes_state(dim: usize, weights: Weights, plot: bool) -> CMAES<'static> {
     let mut options = CMAESOptions::new(dim).weights(weights).initial_mean(
         (0..dim)
             .map(|_| 3.0 * rand::random::<f64>())
@@ -34,7 +34,7 @@ fn get_cmaes_state(dim: usize, weights: Weights, plot: bool) -> CMAESState<'stat
     cmaes_state
 }
 
-fn single_iter(state: &mut CMAESState) -> Option<TerminationData> {
+fn single_iter(state: &mut CMAES) -> Option<TerminationData> {
     state.next()
 }
 

@@ -5,7 +5,7 @@ use nalgebra::DVector;
 
 /// A trait for types that can be used as an objective function. This trait is implemented for
 /// functions and closures with the correct signature, so the following can all be used in a
-/// [`CMAESState`][crate::CMAESState]:
+/// [`CMAES`][crate::CMAES]:
 ///
 /// ```
 /// use cmaes::DVector;
