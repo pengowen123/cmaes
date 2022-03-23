@@ -33,6 +33,19 @@
 //! [0]: https://arxiv.org/pdf/1604.00772.pdf
 //! [1]: https://github.com/CMA-ES/pycma
 
+// lib.rs contains the top-level `CMAES` type that implements the algorithm and interface as well as
+// some user-facing types for termination data.
+//
+// Configuration is handled in the `options` module.
+//
+// Initialization happens in `CMAES::new`, but initialization of individual components can be found
+// in their respective modules.
+//
+// Iteration happens in `CMAES::next`, but the interesting parts are handled in the `sampling` and
+// `state` modules.
+//
+// Termination criteria are handled in the `termination` module.
+
 pub mod objective_function;
 pub mod options;
 pub mod parameters;
