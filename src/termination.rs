@@ -40,8 +40,9 @@ pub enum TerminationReason {
     /// The objective function has returned an invalid value (`NAN` or `-NAN`).
     InvalidFunctionValue,
     /// The covariance matrix is not positive definite. If this is returned frequently, it probably
-    /// indicates a bug in the library and can be reported [here][0]. Using [`Weights::Positive`]
-    /// should prevent this entirely in the meantime.
+    /// indicates a bug in the library and can be reported [here][0]. Using
+    /// [`Weights::Positive`][crate::parameters::Weights::Positive] should prevent this entirely in
+    /// the meantime.
     ///
     /// [0]: https://github.com/pengowen123/cmaes/issues/
     PosDefCov,
