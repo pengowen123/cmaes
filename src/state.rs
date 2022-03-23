@@ -4,13 +4,12 @@ use nalgebra::{DVector, DMatrix};
 
 use crate::parameters::Parameters;
 use crate::matrix::{CovarianceMatrix, PosDefCovError};
+use crate::sampling::EvaluatedPoint;
 
 /// Stores the variable state of the algorithm and handles updating it
 pub struct State {
     /// The number of generations that have been fully completed
     generation: usize,
-    /// The number of times the objective function has been evaluated
-    function_evals: usize,
     /// The distribution mean
     mean: DVector<f64>,
     /// The distribution covariance matrix
@@ -37,7 +36,6 @@ impl State {
 
         Self {
             generation: 0,
-            function_evals: 0,
             mean,
             cov,
             sigma,
@@ -50,8 +48,9 @@ impl State {
     /// Updates the variable state using the provided sampled individuals
     pub fn update(
         &mut self,
+        current_function_evals: usize,
         params: &Parameters,
-        individuals: &[(DVector<f64>, f64)],
+        individuals: &[EvaluatedPoint],
     ) -> Result<(), PosDefCovError> {
         let dim = params.dim();
         let mu = params.mu();
@@ -63,15 +62,13 @@ impl State {
         let cm = params.cm();
         let damp_s = params.damp_s();
 
-        self.function_evals += individuals.len();
-
         // Calculate new mean through weighted recombination
         // Only the mu best individuals are used even if there are lambda weights
         let yw = individuals
             .iter()
             .take(mu)
             .enumerate()
-            .map(|(i, (y, _))| y * params.weights()[i])
+            .map(|(i, p)| p.step() * params.weights()[i])
             .sum::<DVector<f64>>();
         self.mean = &self.mean + &(cm * self.sigma * &yw);
 
@@ -110,7 +107,7 @@ impl State {
                 *w * if *w >= 0.0 {
                     1.0
                 } else {
-                    dim as f64 / (sqrt_inv_c * &individuals[i].0).magnitude().powi(2)
+                    dim as f64 / (sqrt_inv_c * individuals[i].step()).magnitude().powi(2)
                 }
             })
             .collect::<Vec<_>>();
@@ -125,7 +122,7 @@ impl State {
                 * weights_cov
                     .into_iter()
                     .enumerate()
-                    .map(|(i, wc)| wc * &individuals[i].0 * individuals[i].0.transpose())
+                    .map(|(i, wc)| wc * individuals[i].step() * individuals[i].step().transpose())
                     .sum::<DMatrix<f64>>();
 
         // Update eigendecomposition occasionally (updating every generation is unnecessary and
@@ -133,12 +130,13 @@ impl State {
         let evals_per_eigen = (0.5 * dim as f64 * params.lambda() as f64
             / ((c1 + cmu) * dim.pow(2) as f64))
             as usize;
-        let do_eigen_update = self.function_evals >= self.last_eigen_update_evals + evals_per_eigen;
+        let do_eigen_update =
+            current_function_evals >= self.last_eigen_update_evals + evals_per_eigen;
 
         self.cov.set_cov(cov_new, do_eigen_update)?;
 
         if do_eigen_update {
-            self.last_eigen_update_evals = self.function_evals;
+            self.last_eigen_update_evals = current_function_evals;
         }
 
         self.generation += 1;
@@ -148,10 +146,6 @@ impl State {
 
     pub fn generation(&self) -> usize {
         self.generation
-    }
-
-    pub fn function_evals(&self) -> usize {
-        self.function_evals
     }
 
     pub fn mean(&self) -> &DVector<f64> {

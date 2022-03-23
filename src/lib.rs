@@ -38,6 +38,7 @@ pub mod options;
 pub mod parameters;
 pub mod plotting;
 mod matrix;
+mod sampling;
 mod state;
 mod utils;
 
@@ -48,10 +49,6 @@ pub use crate::options::CMAESOptions;
 pub use crate::parameters::Weights;
 pub use crate::plotting::PlotOptions;
 
-use rand::distributions::Distribution;
-use rand::SeedableRng;
-use rand_chacha::ChaCha12Rng;
-use statrs::distribution::Normal;
 use statrs::statistics::{Data, Median};
 
 use std::collections::VecDeque;
@@ -62,6 +59,7 @@ use crate::matrix::SquareMatrix;
 use crate::options::InvalidOptionsError;
 use crate::parameters::Parameters;
 use crate::plotting::Plot;
+use crate::sampling::{EvaluatedPoint, InvalidFunctionValueError, Sampler};
 use crate::state::State;
 
 /// An individual point with its corresponding objective function value.
@@ -93,9 +91,6 @@ pub struct TerminationData {
     pub final_mean: DVector<f64>,
     pub reason: TerminationReason,
 }
-
-#[derive(Clone, Debug)]
-struct InvalidFunctionValueError;
 
 /// Represents the reason for the algorithm terminating. Most of these are for preventing numerical
 /// instability, while `TolFun` and `TolX` are problem-dependent parameters.
@@ -169,8 +164,8 @@ impl fmt::Display for TerminationReason {
 /// let container = Container(cmaes_state);
 /// ```
 pub struct CMAES<'a> {
-    /// The objective function to minimize
-    objective_function: Box<dyn ObjectiveFunction + 'a>,
+    /// Point sampler/evaluator
+    sampler: Sampler<'a>,
     /// Constant parameters
     parameters: Parameters,
     /// Variable state
@@ -185,8 +180,6 @@ pub struct CMAES<'a> {
     current_best_individual: Option<Individual>,
     /// The best individual of any generation
     overall_best_individual: Option<Individual>,
-    /// RNG from which all random numbers are sourced
-    rng: ChaCha12Rng,
     /// Data plot if enabled
     plot: Option<Plot>,
     /// The minimum number of function evaluations to wait for in between each automatic
@@ -224,9 +217,14 @@ impl<'a> CMAES<'a> {
             return Err(InvalidOptionsError::Cm);
         }
 
-        // Initialize rng
+        // Initialize point sampler
         let seed = options.seed.unwrap_or(rand::random());
-        let rng = ChaCha12Rng::seed_from_u64(seed);
+        let sampler = Sampler::new(
+            options.dimensions,
+            options.population_size,
+            objective_function,
+            seed,
+        );
 
         // Initialize constant parameters according to the options
         let tol_x = options.tol_x.unwrap_or(1e-12 * options.initial_step_size);
@@ -248,14 +246,13 @@ impl<'a> CMAES<'a> {
         let plot = options.plot_options.map(|o| Plot::new(options.dimensions, o));
 
         let mut cmaes = Self {
-            objective_function,
+            sampler,
             parameters,
             state,
             best_function_values: VecDeque::new(),
             median_function_values: VecDeque::new(),
             current_best_individual: None,
             overall_best_individual: None,
-            rng,
             plot,
             print_gap_evals: options.print_gap_evals,
             last_print_evals: 0,
@@ -296,66 +293,37 @@ impl<'a> CMAES<'a> {
         result
     }
 
-    /// Samples `lambda` points from the distribution and returns the points and their
-    /// corresponding objective function values sorted by their objective function values. Also
-    /// updates the histories of the best and median function values.
+    /// Samples `lambda` points from the distribution and returns the points sorted by their
+    /// objective function values. Also updates the histories of the best and median function
+    /// values.
     ///
     /// Returns `Err` if an invalid function value was encountered.
     fn sample(
         &mut self,
         past_generations_to_store: usize,
-    ) -> Result<Vec<(DVector<f64>, f64)>, InvalidFunctionValueError> {
-        let normal = Normal::new(0.0, 1.0).unwrap();
-        let params = &self.parameters;
-
-        // Random steps in the distribution N(0, cov)
-        let y = (0..params.lambda())
-            .map(|_| {
-                DVector::from_iterator(
-                    params.dim(),
-                    (0..params.dim()).map(|_| normal.sample(&mut self.rng)),
-                )
-            })
-            .map(|zk| self.state.cov_eigenvectors() * self.state.cov_sqrt_eigenvalues() * zk)
-            .collect::<Vec<_>>();
-        // Transform steps in y to the final distribution of N(mean, sigma^2 * cov)
-        let z = y
-            .iter()
-            .map(|yk| self.state.mean() + self.state.sigma() * yk)
-            .collect::<Vec<_>>();
-
-        // Evaluate and rank steps by evaluating their transformed counterparts
-        let mut individuals = y
-            .iter()
-            .cloned()
-            .zip(z.iter().map(|zk| self.objective_function.evaluate(zk)))
-            .collect::<Vec<_>>();
-
-        individuals.sort_by(|a, b| utils::partial_cmp(&a.1, &b.1));
+    ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
+        // Sample points
+        let individuals = self.sampler.sample(&self.state)?;
 
         // Update histories of best and median values
-        let (best_step, best_value) = individuals[0].clone();
-        let best_individual = self.state.mean() + self.state.sigma() * best_step;
+        let best = &individuals[0];
 
-        self.best_function_values.push_front(best_value);
+        self.best_function_values.push_front(best.value());
         if self.best_function_values.len() > past_generations_to_store {
             self.best_function_values.pop_back();
         }
         // Not perfectly accurate but it shouldn't make a difference
-        let (_, median_value) = individuals[individuals.len() / 2];
-        self.median_function_values.push_front(median_value);
+        let median = &individuals[individuals.len() / 2];
+        self.median_function_values.push_front(median.value());
         if self.median_function_values.len() > past_generations_to_store {
             self.median_function_values.pop_back();
         }
 
-        self.update_best_individuals(Individual::new(best_individual, best_value));
+        self.update_best_individuals(
+            Individual::new(best.point().clone(), best.value()),
+        );
 
-        // Check for invalid function values
-        if individuals.iter().any(|(_, x)| x.is_nan()) {
-            Err(InvalidFunctionValueError)
-        } else {
-            Ok(individuals)
-        }
+        Ok(individuals)
     }
 
     /// Advances to the next generation. Returns `Some` if a termination condition has been reached
@@ -385,7 +353,8 @@ impl<'a> CMAES<'a> {
         };
 
         // Update state
-        if let Err(_) = self.state.update(&self.parameters, &individuals) {
+        if let Err(_) =
+            self.state.update(self.sampler.function_evals(), &self.parameters, &individuals) {
             return Some(self.get_termination_data(TerminationReason::PosDefCov));
         }
 
@@ -393,7 +362,7 @@ impl<'a> CMAES<'a> {
         if let Some(ref plot) = self.plot {
             // Always plot the first generation
             if self.state.generation() <= 1
-                || self.state.function_evals() >= plot.get_next_data_point_evals() {
+                || self.sampler.function_evals() >= plot.get_next_data_point_evals() {
                 self.add_plot_point();
             }
         }
@@ -401,9 +370,9 @@ impl<'a> CMAES<'a> {
         // Print latest state
         if let Some(gap_evals) = self.print_gap_evals {
             // The first few generations are always printed, then print_gap_evals is respected
-            if self.state.function_evals() >= self.last_print_evals + gap_evals {
+            if self.sampler.function_evals() >= self.last_print_evals + gap_evals {
                 self.print_info();
-                self.last_print_evals = self.state.function_evals();
+                self.last_print_evals = self.sampler.function_evals();
             } else if self.state.generation() < 4 {
                 // Don't update last_print_evals so the printed generation numbers can remain
                 // multiples of 10
@@ -414,6 +383,7 @@ impl<'a> CMAES<'a> {
         // Terminate with the current best individual if any termination criterion is met
         let termination_reason =
             self.check_termination_criteria(&individuals, past_generations_to_store);
+
         if let Some(reason) = termination_reason {
             Some(self.get_termination_data(reason))
         } else {
@@ -438,7 +408,7 @@ impl<'a> CMAES<'a> {
     /// Returns `Some` if any termination criterion is met.
     fn check_termination_criteria(
         &self,
-        individuals: &[(DVector<f64>, f64)],
+        individuals: &[EvaluatedPoint],
         past_generations_to_store: usize,
     ) -> Option<TerminationReason> {
         let dim = self.parameters.dim();
@@ -476,7 +446,7 @@ impl<'a> CMAES<'a> {
             let range = (max - min).abs();
             range_past_generations_a = Some(range);
 
-            if range < tol_fun && individuals.iter().all(|(_, y)| *y < tol_fun) {
+            if range < tol_fun && individuals.iter().all(|p| p.value() < tol_fun) {
                 return Some(TerminationReason::TolFun);
             }
         }
@@ -577,7 +547,7 @@ impl<'a> CMAES<'a> {
 
     /// Consumes `self` and returns the objective function.
     pub fn into_objective_function(self) -> Box<dyn ObjectiveFunction + 'a> {
-        self.objective_function
+        self.sampler.into_objective_function()
     }
 
     /// Returns the constant parameters of the algorithm.
@@ -592,7 +562,7 @@ impl<'a> CMAES<'a> {
 
     /// Returns the number of times the objective function has been evaluated.
     pub fn function_evals(&self) -> usize {
-        self.state.function_evals()
+        self.sampler.function_evals()
     }
 
     /// Returns the current mean of the distribution.
@@ -656,7 +626,11 @@ impl<'a> CMAES<'a> {
     /// called manually after termination to plot the final state if [`run`][Self::run] isn't used.
     pub fn add_plot_point(&mut self) {
         if let Some(ref mut plot) = self.plot {
-            plot.add_data_point(&self.state, self.current_best_individual.as_ref());
+            plot.add_data_point(
+                self.sampler.function_evals(),
+                &self.state,
+                self.current_best_individual.as_ref(),
+            );
         }
     }
 
@@ -706,7 +680,7 @@ impl<'a> CMAES<'a> {
     /// This function is called automatically if [`CMAESOptions::enable_printing`] is set.
     pub fn print_info(&self) {
         let generations = format!("{:7}", self.state.generation());
-        let evals = format!("{:7}", self.state.function_evals());
+        let evals = format!("{:7}", self.sampler.function_evals());
         let best_function_value = self
             .current_best_individual()
             .map(|x| utils::format_num(x.value, 19))
@@ -737,7 +711,7 @@ impl<'a> CMAES<'a> {
     /// called manually after termination to print the final state if [`run`][`Self::run`] isn't
     /// used.
     pub fn print_final_info(&self, termination_reason: Option<TerminationReason>) {
-        if self.state.function_evals() != self.last_print_evals {
+        if self.sampler.function_evals() != self.last_print_evals {
             self.print_info();
         }
 
@@ -762,9 +736,22 @@ mod tests {
     use nalgebra::DMatrix;
 
     use super::*;
+    use crate::sampling::EvaluatedPoint;
 
     fn dummy_function(_: &DVector<f64>) -> f64 {
         0.0
+    }
+
+    fn get_dummy_generation(dim: usize, function_value: f64) -> Vec<EvaluatedPoint> {
+        (0..100)
+            .map(|_| {
+                EvaluatedPoint::new(
+                    DVector::zeros(dim),
+                    &DVector::zeros(dim),
+                    1.0,
+                    &mut |_: &DVector<f64>| function_value,
+                ).unwrap()
+            }).collect()
     }
 
     #[test]
@@ -827,7 +814,7 @@ mod tests {
         let dim = 2;
         let cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
         assert_eq!(
-            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&get_dummy_generation(dim, 0.0), 100),
             None,
         );
 
@@ -840,7 +827,7 @@ mod tests {
         *cmaes.state.mut_sigma() = 1e4;
         cmaes.state.mut_cov().set_cov(DMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e4]), true).unwrap();
         assert_eq!(
-            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&get_dummy_generation(dim, 0.0), 100),
             None,
         );
     }
@@ -854,7 +841,7 @@ mod tests {
         cmaes.best_function_values.extend(vec![1.0; 100]);
         cmaes.best_function_values.push_front(1.0 + 1e-13);
         assert_eq!(
-            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&get_dummy_generation(dim, 0.0), 100),
             Some(TerminationReason::TolFun),
         );
     }
@@ -866,7 +853,7 @@ mod tests {
         let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
         *cmaes.state.mut_sigma() = 1e-13;
         assert_eq!(
-            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&get_dummy_generation(dim, 0.0), 100),
             Some(TerminationReason::TolX),
         );
     }
@@ -880,7 +867,7 @@ mod tests {
         // Equal to 1.0 due to lack of precision
         cmaes.best_function_values.push_front(1.0 + 1e-17);
         assert_eq!(
-            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 1.0); 100], 100),
+            cmaes.check_termination_criteria(&get_dummy_generation(dim, 1.0), 100),
             Some(TerminationReason::EqualFunValues),
         );
     }
@@ -899,7 +886,7 @@ mod tests {
         cmaes.best_function_values.extend(values.clone());
         cmaes.median_function_values.extend(values.clone());
         assert_eq!(
-            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 1.0); 100], 40),
+            cmaes.check_termination_criteria(&get_dummy_generation(dim, 0.0), 40),
             Some(TerminationReason::Stagnation),
         );
     }
@@ -911,7 +898,7 @@ mod tests {
         let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
         *cmaes.state.mut_sigma() = 1e8;
         assert_eq!(
-            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&get_dummy_generation(dim, 0.0), 100),
             Some(TerminationReason::TolXUp),
         );
     }
@@ -938,7 +925,7 @@ mod tests {
         for g in 0..dim {
             *cmaes.state.mut_generation() = g;
             let termination_reason =
-                cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100);
+                cmaes.check_termination_criteria(&get_dummy_generation(dim, 0.0), 100);
             if let Some(reason) = termination_reason {
                 assert_eq!(reason, TerminationReason::NoEffectAxis);
                 terminated = true;
@@ -965,7 +952,7 @@ mod tests {
         for g in 0..dim {
             *cmaes.state.mut_generation() = g;
             let termination_reason =
-                cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100);
+                cmaes.check_termination_criteria(&get_dummy_generation(dim, 0.0), 100);
             if let Some(reason) = termination_reason {
                 assert_eq!(reason, TerminationReason::NoEffectCoord);
                 terminated = true;
@@ -982,7 +969,7 @@ mod tests {
         let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
         cmaes.state.mut_cov().set_cov(DMatrix::from_iterator(2, 2, [0.99, 0.0, 0.0, 1e14]), true).unwrap();
         assert_eq!(
-            cmaes.check_termination_criteria(&vec![(DVector::zeros(dim), 0.0); 100], 100),
+            cmaes.check_termination_criteria(&get_dummy_generation(dim, 0.0), 100),
             Some(TerminationReason::ConditionCov),
         );
     }

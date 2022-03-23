@@ -76,8 +76,13 @@ impl PlotData {
     }
 
     /// Adds a data point to the plot from the current state
-    fn add_data_point(&mut self, state: &State, current_best_individual: Option<&Individual>) {
-        self.function_evals.push(state.function_evals());
+    fn add_data_point(
+        &mut self,
+        current_function_evals: usize,
+        state: &State,
+        current_best_individual: Option<&Individual>,
+    ) {
+        self.function_evals.push(current_function_evals);
         let best_function_value = current_best_individual
             .map(|x| x.value)
             // At 0 function evals there isn't a best individual yet, so assign it NAN and filter it
@@ -229,6 +234,7 @@ impl Plot {
     /// Adds a data point to the plot from the current state if not already called this generation.
     pub(crate) fn add_data_point(
         &mut self,
+        current_function_evals: usize,
         state: &State,
         current_best_individual: Option<&Individual>,
     ) {
@@ -237,8 +243,8 @@ impl Plot {
             None => false,
         };
         if !already_added {
-            self.data.add_data_point(state, current_best_individual);
-            self.last_data_point_evals = Some(state.function_evals());
+            self.data.add_data_point(current_function_evals, state, current_best_individual);
+            self.last_data_point_evals = Some(current_function_evals);
             self.last_data_point_generation = Some(state.generation());
         }
     }

@@ -90,6 +90,7 @@ impl CovarianceMatrix {
     }
 }
 
+/// The covariance matrix is not positive definite
 #[derive(Clone, Debug)]
 pub struct PosDefCovError;
 
