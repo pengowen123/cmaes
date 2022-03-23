@@ -1,5 +1,5 @@
-use cmaes::{CMAESOptions, CMAES, DVector, PlotOptions, TerminationData, Weights};
-use criterion::{BatchSize, criterion_group, criterion_main, Criterion};
+use cmaes::{CMAESOptions, DVector, PlotOptions, TerminationData, Weights, CMAES};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use rand;
 
 use std::time::Duration;
@@ -49,11 +49,36 @@ fn criterion_benchmark(c: &mut Criterion) {
         });
     };
 
-    run_bench("single iter aCMA-ES n=3 plot=false", 3, Weights::Negative, false);
-    run_bench("single iter aCMA-ES n=10 plot=false", 10, Weights::Negative, false);
-    run_bench("single iter CMA-ES n=10 plot=false", 10, Weights::Positive, false);
-    run_bench("single iter aCMA-ES n=10 plot=true", 10, Weights::Negative, true);
-    run_bench("single iter aCMA-ES n=30 plot=false", 30, Weights::Negative, false);
+    run_bench(
+        "single iter aCMA-ES n=3 plot=false",
+        3,
+        Weights::Negative,
+        false,
+    );
+    run_bench(
+        "single iter aCMA-ES n=10 plot=false",
+        10,
+        Weights::Negative,
+        false,
+    );
+    run_bench(
+        "single iter CMA-ES n=10 plot=false",
+        10,
+        Weights::Positive,
+        false,
+    );
+    run_bench(
+        "single iter aCMA-ES n=10 plot=true",
+        10,
+        Weights::Negative,
+        true,
+    );
+    run_bench(
+        "single iter aCMA-ES n=30 plot=false",
+        30,
+        Weights::Negative,
+        false,
+    );
 }
 
 criterion_group!(

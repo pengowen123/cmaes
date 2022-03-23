@@ -1,9 +1,9 @@
 //! Variable state of the algorithm and updating of that state.
 
-use nalgebra::{DVector, DMatrix};
+use nalgebra::{DMatrix, DVector};
 
-use crate::parameters::Parameters;
 use crate::matrix::{CovarianceMatrix, PosDefCovError};
+use crate::parameters::Parameters;
 use crate::sampling::EvaluatedPoint;
 
 /// Stores the variable state of the algorithm and handles updating it
@@ -75,8 +75,8 @@ impl State {
         // Update evolution paths
         let sqrt_inv_c = self.cov.sqrt_inv();
 
-        self.path_sigma = (1.0 - cs) * &self.path_sigma
-            + (cs * (2.0 - cs) * mu_eff).sqrt() * sqrt_inv_c * &yw;
+        self.path_sigma =
+            (1.0 - cs) * &self.path_sigma + (cs * (2.0 - cs) * mu_eff).sqrt() * sqrt_inv_c * &yw;
 
         // Expectation of N(0, I)
         let chi_n = (dim as f64).sqrt()
@@ -91,12 +91,10 @@ impl State {
             0.0
         };
 
-        self.path_c = (1.0 - cc) * &self.path_c
-            + hs * (cc * (2.0 - cc) * mu_eff).sqrt() * &yw;
+        self.path_c = (1.0 - cc) * &self.path_c + hs * (cc * (2.0 - cc) * mu_eff).sqrt() * &yw;
 
         // Update step size
-        self.sigma *=
-            ((cs / damp_s) * ((self.path_sigma.magnitude() / chi_n) - 1.0)).exp();
+        self.sigma *= ((cs / damp_s) * ((self.path_sigma.magnitude() / chi_n) - 1.0)).exp();
 
         // Update covariance matrix
         let weights_cov = params
@@ -113,9 +111,7 @@ impl State {
             .collect::<Vec<_>>();
 
         let delta_hs = (1.0 - hs) * cc * (2.0 - cc);
-        let cov_new = (1.0 + c1 * delta_hs
-            - c1
-            - cmu * params.weights().iter().sum::<f64>())
+        let cov_new = (1.0 + c1 * delta_hs - c1 - cmu * params.weights().iter().sum::<f64>())
             * self.cov.cov()
             + c1 * &self.path_c * self.path_c.transpose()
             + cmu
@@ -127,9 +123,8 @@ impl State {
 
         // Update eigendecomposition occasionally (updating every generation is unnecessary and
         // inefficient for high dim)
-        let evals_per_eigen = (0.5 * dim as f64 * params.lambda() as f64
-            / ((c1 + cmu) * dim.pow(2) as f64))
-            as usize;
+        let evals_per_eigen =
+            (0.5 * dim as f64 * params.lambda() as f64 / ((c1 + cmu) * dim.pow(2) as f64)) as usize;
         let do_eigen_update =
             current_function_evals >= self.last_eigen_update_evals + evals_per_eigen;
 
@@ -199,4 +194,3 @@ impl State {
         &mut self.sigma
     }
 }
-

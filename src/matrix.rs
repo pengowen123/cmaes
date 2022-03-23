@@ -1,7 +1,7 @@
 //! Types related to matrix math.
 
-use nalgebra::Dynamic;
 use nalgebra::base::VecStorage;
+use nalgebra::Dynamic;
 
 pub type SquareMatrix<T> = nalgebra::SquareMatrix<T, Dynamic, VecStorage<T, Dynamic, Dynamic>>;
 
@@ -41,8 +41,8 @@ impl CovarianceMatrix {
     pub fn set_cov(
         &mut self,
         new: SquareMatrix<f64>,
-        update_eigen: bool) -> Result<(), PosDefCovError>
-    {
+        update_eigen: bool,
+    ) -> Result<(), PosDefCovError> {
         self.cov = new;
         // Ensure symmetry
         self.cov.fill_lower_triangle_with_upper_triangle();
@@ -71,7 +71,9 @@ impl CovarianceMatrix {
         self.eigenvectors = eigen.eigenvectors;
         self.sqrt_eigenvalues = SquareMatrix::from_diagonal(&eigen.eigenvalues.map(|x| x.sqrt()));
         self.sqrt_inv = &self.eigenvectors
-            * self.sqrt_eigenvalues.map(|d| if d > 0.0 { 1.0 / d } else { d })
+            * self
+                .sqrt_eigenvalues
+                .map(|d| if d > 0.0 { 1.0 / d } else { d })
             * self.eigenvectors.transpose();
 
         Ok(())
@@ -103,7 +105,11 @@ mod tests {
     #[test]
     fn test_update_eigendecomposition() {
         let mut cov = CovarianceMatrix::new(2);
-        cov.set_cov(SquareMatrix::from_iterator(2, 2, [3.0, 1.5, 1.5, 2.0]), false).unwrap();
+        cov.set_cov(
+            SquareMatrix::from_iterator(2, 2, [3.0, 1.5, 1.5, 2.0]),
+            false,
+        )
+        .unwrap();
 
         // The eigendecomposition hasn't been updated yet
         assert_eq!(cov.eigenvectors, SquareMatrix::identity(2, 2));
@@ -111,16 +117,19 @@ mod tests {
 
         cov.update_eigendecomposition().unwrap();
 
-        let reconstructed = cov.eigenvectors.clone()
-            * cov.sqrt_eigenvalues.pow(2)
-            * cov.eigenvectors.transpose();
+        let reconstructed =
+            cov.eigenvectors.clone() * cov.sqrt_eigenvalues.pow(2) * cov.eigenvectors.transpose();
 
         for x in (reconstructed - &cov.cov).iter() {
             assert_approx_eq!(x, 0.0);
         }
 
         // Non-positive-definite matrices should return Err
-        cov.set_cov(SquareMatrix::from_iterator(2, 2, [3.0, 5.0, 5.0, 2.0]), false).unwrap();
+        cov.set_cov(
+            SquareMatrix::from_iterator(2, 2, [3.0, 5.0, 5.0, 2.0]),
+            false,
+        )
+        .unwrap();
         assert!(cov.update_eigendecomposition().is_err());
     }
 }

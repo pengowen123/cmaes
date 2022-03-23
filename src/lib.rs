@@ -46,14 +46,14 @@
 //
 // Termination criteria are handled in the `termination` module.
 
+mod matrix;
 pub mod objective_function;
 pub mod options;
 pub mod parameters;
 pub mod plotting;
-pub mod termination;
-mod matrix;
 mod sampling;
 mod state;
+pub mod termination;
 mod utils;
 
 pub use nalgebra::DVector;
@@ -212,7 +212,9 @@ impl<'a> CMAES<'a> {
         let state = State::new(options.initial_mean, options.initial_step_size);
 
         // Initialize plot if enabled
-        let plot = options.plot_options.map(|o| Plot::new(options.dimensions, o));
+        let plot = options
+            .plot_options
+            .map(|o| Plot::new(options.dimensions, o));
 
         let mut cmaes = Self {
             sampler,
@@ -283,14 +285,13 @@ impl<'a> CMAES<'a> {
         }
         // Not perfectly accurate but it shouldn't make a difference
         let median = &individuals[individuals.len() / 2];
-        self.median_function_value_history.push_front(median.value());
+        self.median_function_value_history
+            .push_front(median.value());
         if self.median_function_value_history.len() > max_history_size {
             self.median_function_value_history.pop_back();
         }
 
-        self.update_best_individuals(
-            Individual::new(best.point().clone(), best.value()),
-        );
+        self.update_best_individuals(Individual::new(best.point().clone(), best.value()));
 
         Ok(individuals)
     }
@@ -308,10 +309,7 @@ impl<'a> CMAES<'a> {
         // self.median_function_value
         // This is the largest history size required by any termination criterion
         let max_history_size = ((0.2 * self.state.generation() as f64).ceil() as usize)
-            .max(
-                120 + (30.0 * dim as f64 / lambda as f64).ceil()
-                    as usize,
-            )
+            .max(120 + (30.0 * dim as f64 / lambda as f64).ceil() as usize)
             .min(20000);
 
         // Sample individuals
@@ -323,8 +321,11 @@ impl<'a> CMAES<'a> {
         };
 
         // Update state
-        if let Err(_) =
-            self.state.update(self.sampler.function_evals(), &self.parameters, &individuals) {
+        if let Err(_) = self.state.update(
+            self.sampler.function_evals(),
+            &self.parameters,
+            &individuals,
+        ) {
             return Some(self.get_termination_data(TerminationReason::PosDefCov));
         }
 
@@ -332,7 +333,8 @@ impl<'a> CMAES<'a> {
         if let Some(ref plot) = self.plot {
             // Always plot the first generation
             if self.state.generation() <= 1
-                || self.sampler.function_evals() >= plot.get_next_data_point_evals() {
+                || self.sampler.function_evals() >= plot.get_next_data_point_evals()
+            {
                 self.add_plot_point();
             }
         }
@@ -413,7 +415,10 @@ impl<'a> CMAES<'a> {
 
     /// Returns the current eigenvalues of the distribution.
     pub fn eigenvalues(&self) -> DVector<f64> {
-        self.state.cov_sqrt_eigenvalues().diagonal().map(|x| x.powi(2))
+        self.state
+            .cov_sqrt_eigenvalues()
+            .diagonal()
+            .map(|x| x.powi(2))
     }
 
     /// Returns the current step size of the distribution.
@@ -487,7 +492,10 @@ impl<'a> CMAES<'a> {
         };
         println!(
             "{} with dimension={}, lambda={}, seed={}",
-            variant, params.dim(), params.lambda(), params.seed()
+            variant,
+            params.dim(),
+            params.lambda(),
+            params.seed()
         );
 
         let title_string = format!(

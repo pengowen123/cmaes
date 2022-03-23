@@ -66,15 +66,27 @@ impl InitialWeights {
     pub fn mu_eff(&self) -> f64 {
         // Square of sum divided by sum of squares of the first mu weights (all positive weights)
         self.weights.iter().take(self.mu).sum::<f64>().powi(2)
-            / self.weights.iter().take(self.mu).map(|w| w.powi(2)).sum::<f64>()
+            / self
+                .weights
+                .iter()
+                .take(self.mu)
+                .map(|w| w.powi(2))
+                .sum::<f64>()
     }
 
     /// Returns the variance-effective mass for the negative weights if there are any negative
     /// weights
     pub fn mu_eff_minus(&self) -> Option<f64> {
         if self.weights.len() > self.mu {
-            Some(self.weights.iter().skip(self.mu).sum::<f64>().powi(2)
-                / self.weights.iter().skip(self.mu).map(|w| w.powi(2)).sum::<f64>())
+            Some(
+                self.weights.iter().skip(self.mu).sum::<f64>().powi(2)
+                    / self
+                        .weights
+                        .iter()
+                        .skip(self.mu)
+                        .map(|w| w.powi(2))
+                        .sum::<f64>(),
+            )
         } else {
             None
         }
@@ -162,11 +174,7 @@ mod tests {
             let final_weights = initial_weights.finalize(6, 0.2, 0.8);
 
             assert!(final_weights.weights.iter().all(|w| *w > 0.0));
-            assert_approx_eq!(
-                final_weights.iter().sum::<f64>(),
-                1.0,
-                1e-12
-            );
+            assert_approx_eq!(final_weights.iter().sum::<f64>(), 1.0, 1e-12);
         }
     }
 
@@ -178,38 +186,17 @@ mod tests {
             let initial_weights = InitialWeights::new(lambda, Weights::Negative);
             let mu = initial_weights.mu();
 
-            assert!(initial_weights
-                .weights
-                .iter()
-                .take(mu)
-                .all(|w| *w > 0.0));
+            assert!(initial_weights.weights.iter().take(mu).all(|w| *w > 0.0));
 
-            assert!(initial_weights
-                .weights
-                .iter()
-                .skip(mu)
-                .all(|w| *w <= 0.0));
+            assert!(initial_weights.weights.iter().skip(mu).all(|w| *w <= 0.0));
 
             let final_weights = initial_weights.finalize(4, 0.5, 0.5);
 
-            assert_approx_eq!(
-                final_weights
-                    .iter()
-                    .take(mu)
-                    .sum::<f64>(),
-                1.0,
-                1e-12
-            );
+            assert_approx_eq!(final_weights.iter().take(mu).sum::<f64>(), 1.0, 1e-12);
 
-            assert!(final_weights
-                .iter()
-                .take(mu)
-                .all(|w| *w > 0.0));
+            assert!(final_weights.iter().take(mu).all(|w| *w > 0.0));
 
-            assert!(final_weights
-                .iter()
-                .skip(mu)
-                .all(|w| *w <= 0.0));
+            assert!(final_weights.iter().skip(mu).all(|w| *w <= 0.0));
         }
     }
 }

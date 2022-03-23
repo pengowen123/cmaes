@@ -6,8 +6,8 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
 use statrs::distribution::Normal;
 
-use crate::{utils, ObjectiveFunction};
 use crate::state::State;
+use crate::{utils, ObjectiveFunction};
 
 /// A type for sampling and evaluating points from the distribution for each generation
 pub struct Sampler<'a> {
@@ -44,7 +44,8 @@ impl<'a> Sampler<'a> {
     ///
     /// Returns Err if the objective function returned an invalid value
     pub fn sample(
-        &mut self, state: &State
+        &mut self,
+        state: &State,
     ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
         let normal = Normal::new(0.0, 1.0).unwrap();
 
@@ -63,7 +64,12 @@ impl<'a> Sampler<'a> {
         let mut points = y
             .into_iter()
             .map(|yk| {
-                EvaluatedPoint::new(yk, state.mean(), state.sigma(), &mut *self.objective_function)
+                EvaluatedPoint::new(
+                    yk,
+                    state.mean(),
+                    state.sigma(),
+                    &mut *self.objective_function,
+                )
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -112,11 +118,7 @@ impl EvaluatedPoint {
         if value.is_nan() {
             Err(InvalidFunctionValueError)
         } else {
-            Ok(Self {
-                point,
-                step,
-                value,
-            })
+            Ok(Self { point, step, value })
         }
     }
 

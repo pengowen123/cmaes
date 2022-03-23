@@ -200,9 +200,9 @@ mod tests {
     use nalgebra::DVector;
 
     use super::*;
+    use crate::matrix::SquareMatrix;
     use crate::parameters::Weights;
     use crate::state::State;
-    use crate::matrix::SquareMatrix;
 
     const DEFAULT_INITIAL_SIGMA: f64 = 0.5;
     const DIM: usize = 2;
@@ -225,7 +225,10 @@ mod tests {
     }
 
     fn get_state(initial_sigma: Option<f64>) -> State {
-        State::new(vec![0.0; DIM].into(), initial_sigma.unwrap_or(DEFAULT_INITIAL_SIGMA))
+        State::new(
+            vec![0.0; DIM].into(),
+            initial_sigma.unwrap_or(DEFAULT_INITIAL_SIGMA),
+        )
     }
 
     fn get_dummy_generation(function_value: f64) -> Vec<EvaluatedPoint> {
@@ -236,8 +239,10 @@ mod tests {
                     &DVector::zeros(DIM),
                     1.0,
                     &mut |_: &DVector<f64>| function_value,
-                ).unwrap()
-            }).collect()
+                )
+                .unwrap()
+            })
+            .collect()
     }
 
     #[test]
@@ -267,10 +272,13 @@ mod tests {
         let mut state = get_state(initial_sigma);
 
         *state.mut_sigma() = 1e4;
-        state.mut_cov().set_cov(
-            SquareMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e4]),
-            true,
-        ).unwrap();
+        state
+            .mut_cov()
+            .set_cov(
+                SquareMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e4]),
+                true,
+            )
+            .unwrap();
 
         assert_eq!(
             check_termination_criteria(
@@ -423,9 +431,7 @@ mod tests {
             DVector::from(vec![-2.0, 3.0]).normalize(),
         ]);
         let sqrt_eigenvalues = SquareMatrix::from_diagonal(&vec![1e-1, 1e-6].into());
-        let cov = &eigenvectors
-            * sqrt_eigenvalues.pow(2)
-            * eigenvectors.transpose();
+        let cov = &eigenvectors * sqrt_eigenvalues.pow(2) * eigenvectors.transpose();
         state.mut_cov().set_cov(cov, true).unwrap();
 
         let mut terminated = false;
@@ -460,9 +466,7 @@ mod tests {
 
         let eigenvectors = SquareMatrix::<f64>::identity(2, 2);
         let sqrt_eigenvalues = SquareMatrix::from_diagonal(&vec![1e-4, 1e-10].into());
-        let cov = &eigenvectors
-            * sqrt_eigenvalues.pow(2)
-            * eigenvectors.transpose();
+        let cov = &eigenvectors * sqrt_eigenvalues.pow(2) * eigenvectors.transpose();
         state.mut_cov().set_cov(cov, true).unwrap();
 
         let mut terminated = false;
@@ -493,10 +497,13 @@ mod tests {
         let initial_sigma = None;
         let mut state = get_state(initial_sigma);
 
-        state.mut_cov().set_cov(
-            SquareMatrix::from_iterator(2, 2, [0.99, 0.0, 0.0, 1e14]),
-            true
-        ).unwrap();
+        state
+            .mut_cov()
+            .set_cov(
+                SquareMatrix::from_iterator(2, 2, [0.99, 0.0, 0.0, 1e14]),
+                true,
+            )
+            .unwrap();
 
         assert_eq!(
             check_termination_criteria(

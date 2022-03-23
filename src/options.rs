@@ -2,8 +2,8 @@
 
 use nalgebra::DVector;
 
-use crate::{CMAES, ObjectiveFunction, PlotOptions};
 use crate::parameters::Weights;
+use crate::{ObjectiveFunction, PlotOptions, CMAES};
 
 /// A builder for [`CMAES`]. Used to adjust parameters of the algorithm to each particular
 /// problem and to change other options. See the fields and methods for a full list of options.

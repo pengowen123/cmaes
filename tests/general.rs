@@ -1,7 +1,7 @@
 //! General tests
 
 use assert_approx_eq::assert_approx_eq;
-use cmaes::{CMAESOptions, CMAES, ObjectiveFunction, Weights};
+use cmaes::{CMAESOptions, ObjectiveFunction, Weights, CMAES};
 use nalgebra::DVector;
 
 use std::collections::HashMap;

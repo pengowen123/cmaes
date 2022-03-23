@@ -20,8 +20,8 @@ use std::io;
 use std::ops::Range;
 use std::path::Path;
 
-use crate::{utils, Individual};
 use crate::state::State;
+use crate::{utils, Individual};
 
 /// The drawing backend to use for rendering the plot.
 pub type Backend<'a> = BitMapBackend<'a>;
@@ -243,7 +243,8 @@ impl Plot {
             None => false,
         };
         if !already_added {
-            self.data.add_data_point(current_function_evals, state, current_best_individual);
+            self.data
+                .add_data_point(current_function_evals, state, current_best_individual);
             self.last_data_point_evals = Some(current_function_evals);
             self.last_data_point_generation = Some(state.generation());
         }
