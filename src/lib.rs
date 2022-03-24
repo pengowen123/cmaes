@@ -65,11 +65,11 @@ pub use crate::plotting::PlotOptions;
 pub use crate::termination::TerminationReason;
 
 use std::collections::VecDeque;
-use std::{f64, iter};
+use std::f64;
 
 use crate::matrix::SquareMatrix;
 use crate::options::InvalidOptionsError;
-use crate::parameters::Parameters;
+use crate::parameters::{Parameters, TerminationParameters};
 use crate::plotting::Plot;
 use crate::sampling::{EvaluatedPoint, InvalidFunctionValueError, Sampler};
 use crate::state::State;
@@ -187,7 +187,7 @@ impl<'a> CMAES<'a> {
         }
 
         // Initialize point sampler
-        let seed = options.seed.unwrap_or(rand::random());
+        let seed = options.seed.unwrap_or_else(rand::random);
         let sampler = Sampler::new(
             options.dimensions,
             options.population_size,
@@ -197,6 +197,10 @@ impl<'a> CMAES<'a> {
 
         // Initialize constant parameters according to the options
         let tol_x = options.tol_x.unwrap_or(1e-12 * options.initial_step_size);
+        let termination_parameters = TerminationParameters {
+            tol_fun: options.tol_fun,
+            tol_x,
+        };
         let parameters = Parameters::new(
             options.dimensions,
             options.population_size,
@@ -204,8 +208,7 @@ impl<'a> CMAES<'a> {
             seed,
             options.initial_step_size,
             options.cm,
-            options.tol_fun,
-            tol_x,
+            termination_parameters,
         );
 
         // Initialize variable parameters
@@ -233,7 +236,7 @@ impl<'a> CMAES<'a> {
         cmaes.add_plot_point();
 
         // Print initial info
-        if let Some(_) = cmaes.print_gap_evals {
+        if cmaes.print_gap_evals.is_some() {
             cmaes.print_initial_info();
         }
 
@@ -300,6 +303,7 @@ impl<'a> CMAES<'a> {
     /// and the algorithm should be stopped. [`run`][Self::run] is generally easier to use, but
     /// iteration can be performed manually if finer control is needed (plotting/printing the final
     /// state must be done manually as well in this case).
+    #[allow(clippy::should_implement_trait)]
     #[must_use]
     pub fn next(&mut self) -> Option<TerminationData> {
         let dim = self.parameters.dim();
@@ -321,11 +325,15 @@ impl<'a> CMAES<'a> {
         };
 
         // Update state
-        if let Err(_) = self.state.update(
-            self.sampler.function_evals(),
-            &self.parameters,
-            &individuals,
-        ) {
+        if self
+            .state
+            .update(
+                self.sampler.function_evals(),
+                &self.parameters,
+                &individuals,
+            )
+            .is_err()
+        {
             return Some(self.get_termination_data(TerminationReason::PosDefCov));
         }
 
@@ -362,11 +370,7 @@ impl<'a> CMAES<'a> {
             &individuals,
         );
 
-        if let Some(reason) = termination_reason {
-            Some(self.get_termination_data(reason))
-        } else {
-            None
-        }
+        termination_reason.map(|reason| self.get_termination_data(reason))
     }
 
     /// Updates the current and overall best individuals.
@@ -504,12 +508,7 @@ impl<'a> CMAES<'a> {
         );
 
         println!("{}", title_string);
-        println!(
-            "{}",
-            iter::repeat('-')
-                .take(title_string.chars().count())
-                .collect::<String>()
-        );
+        println!("{}", "-".repeat(title_string.chars().count()));
     }
 
     /// Prints various state variables of the algorithm. The variables that are printed are the:

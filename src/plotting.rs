@@ -75,6 +75,11 @@ impl PlotData {
         self.function_evals.capacity()
     }
 
+    /// Returns whether there are no data points in the plot
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Adds a data point to the plot from the current state
     fn add_data_point(
         &mut self,
@@ -299,6 +304,11 @@ impl Plot {
     /// Returns the number of data points for which space has been allocated.
     pub fn capacity(&self) -> usize {
         self.data.capacity()
+    }
+
+    /// Returns whether there are no data points in the plot.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
     }
 
     /// Clears the plot data except for the most recent data point for each variable. Can be called
@@ -545,6 +555,7 @@ impl Plot {
     }
 
     /// Creates a `ChartContext` with a common style and calls `map` with it
+    #[allow(clippy::too_many_arguments)]
     fn configure_area<'a, 'b, Y, F>(
         &self,
         area: &'a DrawingArea<Backend<'b>, coord::Shift>,
@@ -570,12 +581,10 @@ impl Plot {
         let y_label_formatter = |v: &f64| {
             if log_y {
                 format!("1e{}", v.log10().round())
+            } else if scientific_notation {
+                format!("{:e}", v)
             } else {
-                if scientific_notation {
-                    format!("{:e}", v)
-                } else {
-                    format!("{}", v)
-                }
+                format!("{}", v)
             }
         };
 
@@ -624,18 +633,18 @@ pub enum PlotError<'a> {
 
 impl<'a> fmt::Display for PlotError<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &PlotError::DrawingError(ref e) => write!(fmt, "DrawingError({})", e),
-            &PlotError::IoError(ref e) => write!(fmt, "IoError({})", e),
+        match *self {
+            PlotError::DrawingError(ref e) => write!(fmt, "DrawingError({})", e),
+            PlotError::IoError(ref e) => write!(fmt, "IoError({})", e),
         }
     }
 }
 
 impl<'a> Error for PlotError<'a> {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            &PlotError::DrawingError(ref e) => Some(e),
-            &PlotError::IoError(ref e) => Some(e),
+        match *self {
+            PlotError::DrawingError(ref e) => Some(e),
+            PlotError::IoError(ref e) => Some(e),
         }
     }
 }
@@ -694,18 +703,8 @@ fn get_log_range<I: Iterator<Item = f64> + Clone>(
 ) {
     // Margin to be added to the top and bottom of the range
     let margin = 0.4;
-    let log_min = iter
-        .clone()
-        .min_by(|a, b| utils::partial_cmp(a, b))
-        .unwrap()
-        .log10()
-        - margin;
-    let log_max = iter
-        .clone()
-        .max_by(|a, b| utils::partial_cmp(a, b))
-        .unwrap()
-        .log10()
-        + margin;
+    let log_min = iter.clone().min_by(utils::partial_cmp).unwrap().log10() - margin;
+    let log_max = iter.max_by(utils::partial_cmp).unwrap().log10() + margin;
 
     let num_labels = ((log_max - log_min).round() as usize).min(26);
     (
@@ -717,14 +716,8 @@ fn get_log_range<I: Iterator<Item = f64> + Clone>(
 /// Returns a range encompassing all values in the iterator and the number of y-labels to use for
 /// the range. The range has a small margin added to either end.
 fn get_range<I: Iterator<Item = f64> + Clone>(iter: I) -> (Range<f64>, usize) {
-    let mut min = iter
-        .clone()
-        .min_by(|a, b| utils::partial_cmp(a, b))
-        .unwrap();
-    let mut max = iter
-        .clone()
-        .max_by(|a, b| utils::partial_cmp(a, b))
-        .unwrap();
+    let mut min = iter.clone().min_by(utils::partial_cmp).unwrap();
+    let mut max = iter.max_by(utils::partial_cmp).unwrap();
     let mut margin = (max - min) * 0.15;
 
     if margin == 0.0 {

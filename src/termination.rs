@@ -202,7 +202,7 @@ mod tests {
 
     use super::*;
     use crate::matrix::SquareMatrix;
-    use crate::parameters::Weights;
+    use crate::parameters::{TerminationParameters, Weights};
     use crate::state::State;
 
     const DEFAULT_INITIAL_SIGMA: f64 = 0.5;
@@ -213,6 +213,10 @@ mod tests {
         let initial_sigma = initial_sigma.unwrap_or(DEFAULT_INITIAL_SIGMA);
         let lambda = 6;
         let cm = 1.0;
+        let termination_parameters = TerminationParameters {
+            tol_fun: 1e-12,
+            tol_x: 1e-12 * initial_sigma,
+        };
         Parameters::new(
             DIM,
             lambda,
@@ -220,8 +224,7 @@ mod tests {
             0,
             initial_sigma,
             cm,
-            1e-12,
-            1e-12 * initial_sigma,
+            termination_parameters,
         )
     }
 

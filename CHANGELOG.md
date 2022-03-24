@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Renamed `CMAESState` to `CMAES`.
-- Added `Plot::len` and `Plot::capacity` methods to retrieve the number of data points stored and allocated for.
+- Added `Plot::len`, `Plot::is_empty`, and `Plot::capacity` methods to retrieve the number of data points stored and allocated for.
 
 ## 0.1.1 (March 4th, 2022)
 

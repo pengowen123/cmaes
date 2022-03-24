@@ -8,6 +8,15 @@ pub use weights::Weights;
 
 use weights::{FinalWeights, InitialWeights};
 
+/// Parameters of the termination criteria
+#[derive(Clone, Debug)]
+pub(crate) struct TerminationParameters {
+    /// Value for the TolFun termination criterion
+    pub tol_fun: f64,
+    /// Value for the TolX termination criterion
+    pub tol_x: f64,
+}
+
 /// Stores constant parameters for the algorithm. Obtained by calling
 /// [`CMAES::parameters`][crate::CMAES::parameters].
 #[derive(Clone, Debug)]
@@ -36,10 +45,8 @@ pub struct Parameters {
     cm: f64,
     /// Damping parameter for step size update
     damp_s: f64,
-    /// Value for the TolFun termination criterion
-    tol_fun: f64,
-    /// Value for the TolX termination criterion
-    tol_x: f64,
+    /// Parameters of the termination criteria
+    termination: TerminationParameters,
     /// Seed for the RNG
     seed: u64,
 }
@@ -53,8 +60,7 @@ impl Parameters {
         seed: u64,
         initial_sigma: f64,
         cm: f64,
-        tol_fun: f64,
-        tol_x: f64,
+        termination: TerminationParameters,
     ) -> Self {
         let initial_weights = InitialWeights::new(lambda, weights);
         let mu = initial_weights.mu();
@@ -88,8 +94,7 @@ impl Parameters {
             cmu,
             cm,
             damp_s,
-            tol_fun,
-            tol_x,
+            termination,
             seed,
         }
     }
@@ -162,13 +167,13 @@ impl Parameters {
     /// Returns the value for the [`TerminationReason::TolFun`][crate::TerminationReason::TolFun]
     /// termination criterion.
     pub fn tol_fun(&self) -> f64 {
-        self.tol_fun
+        self.termination.tol_fun
     }
 
     /// Returns the value for the [`TerminationReason::TolX`][crate::TerminationReason::TolX]
     /// termination criterion.
     pub fn tol_x(&self) -> f64 {
-        self.tol_x
+        self.termination.tol_x
     }
 
     /// Returns the seed for the RNG.

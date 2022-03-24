@@ -97,18 +97,13 @@ impl State {
         self.sigma *= ((cs / damp_s) * ((self.path_sigma.magnitude() / chi_n) - 1.0)).exp();
 
         // Update covariance matrix
-        let weights_cov = params
-            .weights()
-            .iter()
-            .enumerate()
-            .map(|(i, w)| {
-                *w * if *w >= 0.0 {
-                    1.0
-                } else {
-                    dim as f64 / (sqrt_inv_c * individuals[i].step()).magnitude().powi(2)
-                }
-            })
-            .collect::<Vec<_>>();
+        let weights_cov = params.weights().iter().enumerate().map(|(i, w)| {
+            *w * if *w >= 0.0 {
+                1.0
+            } else {
+                dim as f64 / (sqrt_inv_c * individuals[i].step()).magnitude().powi(2)
+            }
+        });
 
         let delta_hs = (1.0 - hs) * cc * (2.0 - cc);
         let cov_new = (1.0 + c1 * delta_hs - c1 - cmu * params.weights().iter().sum::<f64>())
@@ -116,7 +111,6 @@ impl State {
             + c1 * &self.path_c * self.path_c.transpose()
             + cmu
                 * weights_cov
-                    .into_iter()
                     .enumerate()
                     .map(|(i, wc)| wc * individuals[i].step() * individuals[i].step().transpose())
                     .sum::<DMatrix<f64>>();

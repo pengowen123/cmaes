@@ -57,12 +57,10 @@ impl<'a> Sampler<'a> {
                     (0..self.dim).map(|_| normal.sample(&mut self.rng)),
                 )
             })
-            .map(|zk| state.cov_eigenvectors() * state.cov_sqrt_eigenvalues() * zk)
-            .collect::<Vec<_>>();
+            .map(|zk| state.cov_eigenvectors() * state.cov_sqrt_eigenvalues() * zk);
 
         // Evaluate and rank points
         let mut points = y
-            .into_iter()
             .map(|yk| {
                 EvaluatedPoint::new(
                     yk,

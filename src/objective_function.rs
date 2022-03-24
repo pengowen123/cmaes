@@ -61,17 +61,15 @@ use nalgebra::DVector;
 ///     }
 /// }
 ///
-/// fn main() {
-///     // The objective function's state can be retrieved after optimization
-///     let mut custom = Custom { counter: 0.0 };
+/// // The objective function's state can be retrieved after optimization
+/// let mut custom = Custom { counter: 0.0 };
 ///
-///     {
-///         let mut cmaes_state = CMAESOptions::new(2).build(&mut custom).unwrap();
-///         cmaes_state.run(20000);
-///     }
-///
-///     println!("{}", custom.counter);
+/// {
+///     let mut cmaes_state = CMAESOptions::new(2).build(&mut custom).unwrap();
+///     cmaes_state.run(20000);
 /// }
+///
+/// println!("{}", custom.counter);
 /// ```
 pub trait ObjectiveFunction {
     fn evaluate(&mut self, x: &DVector<f64>) -> f64;
