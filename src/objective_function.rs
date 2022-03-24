@@ -1,5 +1,5 @@
-//! A trait for types that can be used as an objective function. See [`ObjectiveFunction`] for full
-//! documentation.
+//! A trait for types that can be used as an objective function, as well as wrapper types that
+//! modify the behavior of objective functions.
 
 use nalgebra::DVector;
 
@@ -71,6 +71,9 @@ use nalgebra::DVector;
 ///
 /// println!("{}", custom.counter);
 /// ```
+///
+/// Wrapper types for modifying objective functions are provided in the
+/// [`objective_function`][crate::objective_function] module, and more can be implemented manually.
 pub trait ObjectiveFunction {
     fn evaluate(&mut self, x: &DVector<f64>) -> f64;
 }
@@ -78,5 +81,86 @@ pub trait ObjectiveFunction {
 impl<F: FnMut(&DVector<f64>) -> f64> ObjectiveFunction for F {
     fn evaluate(&mut self, x: &DVector<f64>) -> f64 {
         (self)(x)
+    }
+}
+
+/// A type that wraps any [`ObjectiveFunction`] and scales the input vectors before passing them to
+/// the wrapped function.
+///
+/// Can be used to restrict or widen the the search space in one or more
+/// dimensions in case it is known that the solution likely lies within a narrower or wider range in
+/// them.
+///
+/// # Examples
+///
+/// ```
+/// # use cmaes::{CMAESOptions, DVector};
+/// use cmaes::objective_function::Scale;
+///
+/// let mut function = |x: &DVector<f64>| x.iter().sum();
+/// let scale = Scale::new(function, vec![0.2, 0.2, 1.0]);
+///
+/// let mut state = CMAESOptions::new(2).build(scale).unwrap();
+/// ```
+#[derive(Clone)]
+pub struct Scale<F> {
+    function: F,
+    scales: DVector<f64>,
+}
+
+impl<F: ObjectiveFunction> Scale<F> {
+    /// Returns a new `Scale`, wrapping `function` and multiplying each dimension of its inputs by
+    /// the respective element of `scales`.
+    pub fn new<S: Into<DVector<f64>>>(function: F, scales: S) -> Self {
+        Self {
+            function,
+            scales: scales.into(),
+        }
+    }
+
+    /// Applies the `Scale` to a vector and returns it.
+    pub fn scale(&self, vector: &DVector<f64>) -> DVector<f64> {
+        vector.component_mul(&self.scales)
+    }
+
+    /// Returns the scales.
+    pub fn scales(&self) -> &DVector<f64> {
+        &self.scales
+    }
+
+    /// Consumes `self` and returns the wrapped function.
+    pub fn into_wrapped_function(self) -> F {
+        self.function
+    }
+}
+
+impl<F: ObjectiveFunction> ObjectiveFunction for Scale<F> {
+    fn evaluate(&mut self, x: &DVector<f64>) -> f64 {
+        let scaled = self.scale(x);
+        self.function.evaluate(&scaled)
+    }
+}
+
+impl<'a, F: ObjectiveFunction> ObjectiveFunction for &'a mut Scale<F> {
+    fn evaluate(&mut self, x: &DVector<f64>) -> f64 {
+        ObjectiveFunction::evaluate(*self, x)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scale() {
+        let mut function = |x: &DVector<f64>| x.iter().sum();
+        let scales = vec![2.0, 4.0, 8.0];
+        let mut scale = Scale::new(&mut function, scales);
+
+        assert_eq!(
+            DVector::from(vec![2.0, 4.0, 8.0]),
+            scale.scale(&vec![1.0; 3].into())
+        );
+        assert_eq!(14.0, scale.evaluate(&vec![1.0; 3].into()));
     }
 }

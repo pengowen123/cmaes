@@ -2,6 +2,7 @@
 
 #![allow(dead_code)]
 
+use cmaes::objective_function::{ObjectiveFunction, Scale};
 use cmaes::{CMAESOptions, DVector, PlotOptions, Weights};
 use rand;
 
@@ -12,6 +13,9 @@ fn main() {
 
     // Customize parameters for the problem
     let dim = 10;
+    // The search space can be scaled in each dimension
+    let mut function = Scale::new(function, vec![2.0; dim]);
+
     let mut cmaes_state = CMAESOptions::new(dim)
         .weights(Weights::Positive)
         .tol_fun(1e-6)
@@ -21,14 +25,17 @@ fn main() {
         // Enable recording the plot and printing info
         .enable_plot(PlotOptions::new(0, false))
         .enable_printing(200)
-        .build(function)
+        .build(function.clone())
         .unwrap();
 
     // Find a solution
     let max_generations = 20000;
     let solution = cmaes_state.run(max_generations);
 
-    println!("Final mean has value {:e}", function(cmaes_state.mean()));
+    println!(
+        "Final mean has value {:e}",
+        function.evaluate(cmaes_state.mean())
+    );
     if let Some(s) = solution {
         println!(
             "Solution individual has value {:e} and point {}",

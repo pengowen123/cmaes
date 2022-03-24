@@ -24,8 +24,9 @@
 //! let result = cmaes_state.run(max_generations);
 //! ```
 //!
-//! The [`ObjectiveFunction`] trait allows for custom objective function types to store state and
-//! parameters, and the [`CMAES::next`] method provides finer control over iteration if needed.
+//! The [`objective_function`] module provides a trait that allows for custom objective function
+//! types that store state and parameters, and the [`CMAES::next`] method provides finer control
+//! over iteration if needed.
 //!
 //! See [this paper][0] for details on the algorithm itself. This library is based on the linked
 //! paper and the [pycma][1] implementation.
