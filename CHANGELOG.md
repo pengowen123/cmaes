@@ -4,6 +4,7 @@
 
 - Renamed `CMAESState` to `CMAES`.
 - Added `Plot::len`, `Plot::is_empty`, and `Plot::capacity` methods to retrieve the number of data points stored and allocated for.
+- Added `Scale` wrapper type for objective functions that scales the search space.
 
 ## 0.1.1 (March 4th, 2022)
 
