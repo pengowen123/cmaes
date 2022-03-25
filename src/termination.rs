@@ -11,9 +11,14 @@ use crate::state::State;
 use crate::utils;
 
 /// Represents the reason for the algorithm terminating. Most of these are for preventing numerical
-/// instability, while `TolFun` and `TolX` are problem-dependent parameters.
+/// instability, while `Tol*` are problem-dependent parameters and `Max*` are for bounding
+/// iteration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TerminationReason {
+    /// The maximum number of objective function evaluations has been reached.
+    MaxFunctionEvals,
+    /// The maximum number of generations has been reached.
+    MaxGenerations,
     /// All function values of the latest generation and the range of the best function values of
     /// many consecutive generations lie below `tol_fun`.
     TolFun,
@@ -57,6 +62,7 @@ impl fmt::Display for TerminationReason {
 /// Checks the state, objective function value history, and current generation, and returns
 /// `Some` if any termination criterion is met
 pub(crate) fn check_termination_criteria(
+    current_function_evals: usize,
     parameters: &Parameters,
     state: &State,
     best_function_value_history: &VecDeque<f64>,
@@ -76,6 +82,20 @@ pub(crate) fn check_termination_criteria(
     let cov_sqrt_eigenvalues = state.cov_sqrt_eigenvalues();
     let sigma = state.sigma();
     let path_c = state.path_c();
+
+    // Check TerminationReason::MaxFunctionEvals
+    if let Some(max_function_evals) = parameters.max_function_evals() {
+        if current_function_evals >= max_function_evals {
+            return Some(TerminationReason::MaxFunctionEvals);
+        }
+    }
+
+    // Check TerminationReason::MaxGenerations
+    if let Some(max_generations) = parameters.max_generations() {
+        if state.generation() >= max_generations {
+            return Some(TerminationReason::MaxGenerations);
+        }
+    }
 
     // Check TerminationReason::TolFun
     let past_generations_a = 10 + (30.0 * dim as f64 / lambda as f64).ceil() as usize;
@@ -209,11 +229,17 @@ mod tests {
     const DIM: usize = 2;
     const MAX_HISTORY_LENGTH: usize = 100;
 
-    fn get_parameters(initial_sigma: Option<f64>) -> Parameters {
+    fn get_parameters(
+        initial_sigma: Option<f64>,
+        max_function_evals: Option<usize>,
+        max_generations: Option<usize>,
+    ) -> Parameters {
         let initial_sigma = initial_sigma.unwrap_or(DEFAULT_INITIAL_SIGMA);
         let lambda = 6;
         let cm = 1.0;
         let termination_parameters = TerminationParameters {
+            max_function_evals: max_function_evals,
+            max_generations: max_generations,
             tol_fun: 1e-12,
             tol_x: 1e-12 * initial_sigma,
         };
@@ -250,6 +276,48 @@ mod tests {
     }
 
     #[test]
+    fn test_check_termination_criteria_max_function_evals() {
+        let initial_sigma = None;
+        let state = get_state(initial_sigma);
+
+        let current_function_evals = 100;
+
+        assert_eq!(
+            check_termination_criteria(
+                current_function_evals,
+                &get_parameters(initial_sigma, Some(100), None),
+                &state,
+                &VecDeque::new(),
+                &VecDeque::new(),
+                MAX_HISTORY_LENGTH,
+                &get_dummy_generation(0.0),
+            ),
+            Some(TerminationReason::MaxFunctionEvals),
+        );
+    }
+
+    #[test]
+    fn test_check_termination_criteria_max_generations() {
+        let initial_sigma = None;
+        let mut state = get_state(initial_sigma);
+
+        *state.mut_generation() = 100;
+
+        assert_eq!(
+            check_termination_criteria(
+                0,
+                &get_parameters(initial_sigma, None, Some(100)),
+                &state,
+                &VecDeque::new(),
+                &VecDeque::new(),
+                MAX_HISTORY_LENGTH,
+                &get_dummy_generation(0.0),
+            ),
+            Some(TerminationReason::MaxGenerations),
+        );
+    }
+
+    #[test]
     fn test_check_termination_criteria_none() {
         // A fresh state should not meet any termination criteria
         let initial_sigma = None;
@@ -257,7 +325,8 @@ mod tests {
 
         assert_eq!(
             check_termination_criteria(
-                &get_parameters(initial_sigma),
+                0,
+                &get_parameters(initial_sigma, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -286,7 +355,8 @@ mod tests {
 
         assert_eq!(
             check_termination_criteria(
-                &get_parameters(initial_sigma),
+                0,
+                &get_parameters(initial_sigma, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -310,7 +380,8 @@ mod tests {
 
         assert_eq!(
             check_termination_criteria(
-                &get_parameters(initial_sigma),
+                0,
+                &get_parameters(initial_sigma, None, None),
                 &state,
                 &best_function_value_history,
                 &VecDeque::new(),
@@ -331,7 +402,8 @@ mod tests {
 
         assert_eq!(
             check_termination_criteria(
-                &get_parameters(initial_sigma),
+                0,
+                &get_parameters(initial_sigma, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -355,7 +427,8 @@ mod tests {
 
         assert_eq!(
             check_termination_criteria(
-                &get_parameters(initial_sigma),
+                0,
+                &get_parameters(initial_sigma, None, None),
                 &state,
                 &best_function_value_history,
                 &VecDeque::new(),
@@ -388,7 +461,8 @@ mod tests {
 
         assert_eq!(
             check_termination_criteria(
-                &get_parameters(initial_sigma),
+                0,
+                &get_parameters(initial_sigma, None, None),
                 &state,
                 &best_function_value_history,
                 &median_function_value_history,
@@ -409,7 +483,8 @@ mod tests {
 
         assert_eq!(
             check_termination_criteria(
-                &get_parameters(initial_sigma),
+                0,
+                &get_parameters(initial_sigma, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -443,7 +518,8 @@ mod tests {
             *state.mut_generation() = g;
 
             let termination_reason = check_termination_criteria(
-                &get_parameters(initial_sigma),
+                0,
+                &get_parameters(initial_sigma, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -478,7 +554,8 @@ mod tests {
             *state.mut_generation() = g;
 
             let termination_reason = check_termination_criteria(
-                &get_parameters(initial_sigma),
+                0,
+                &get_parameters(initial_sigma, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -511,7 +588,8 @@ mod tests {
 
         assert_eq!(
             check_termination_criteria(
-                &get_parameters(initial_sigma),
+                0,
+                &get_parameters(initial_sigma, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),

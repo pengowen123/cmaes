@@ -17,11 +17,11 @@
 //! let mut cmaes_state = CMAESOptions::new(dim)
 //!     .initial_mean(vec![1.0; dim])
 //!     .enable_printing(200)
+//!     .max_generations(20000)
 //!     .build(sphere)
 //!     .unwrap();
 //!
-//! let max_generations = 20000;
-//! let result = cmaes_state.run(max_generations);
+//! let result = cmaes_state.run();
 //! ```
 //!
 //! The [`objective_function`] module provides a trait that allows for custom objective function
@@ -199,6 +199,8 @@ impl<'a> CMAES<'a> {
         // Initialize constant parameters according to the options
         let tol_x = options.tol_x.unwrap_or(1e-12 * options.initial_step_size);
         let termination_parameters = TerminationParameters {
+            max_function_evals: options.max_function_evals,
+            max_generations: options.max_generations,
             tol_fun: options.tol_fun,
             tol_x,
         };
@@ -244,25 +246,21 @@ impl<'a> CMAES<'a> {
         Ok(cmaes)
     }
 
-    /// Iterates the algorithm until termination or until `max_generations` is reached. If no
-    /// termination criteria are met before `max_generations` is reached, `None` will be returned.
-    /// [`next`][Self::next] can be called manually if more control over termination is needed
-    /// (plotting/printing the final state must be done manually as well in this case).
-    pub fn run(&mut self, max_generations: usize) -> Option<TerminationData> {
-        let mut result = None;
-
-        for _ in 0..max_generations {
+    /// Iterates the algorithm until termination. [`next`][Self::next] can be called manually if
+    /// more control over termination is needed (plotting/printing the final state must be done
+    /// manually as well in this case).
+    pub fn run(&mut self) -> TerminationData {
+        let result = loop {
             if let Some(data) = self.next() {
-                result = Some(data);
-                break;
+                break data;
             }
-        }
+        };
 
         // Plot/print the final state
         self.add_plot_point();
 
         if self.print_gap_evals.is_some() {
-            self.print_final_info(result.as_ref().map(|d| d.reason));
+            self.print_final_info(result.reason);
         }
 
         result
@@ -363,6 +361,7 @@ impl<'a> CMAES<'a> {
 
         // Terminate with the current best individual if any termination criterion is met
         let termination_reason = termination::check_termination_criteria(
+            self.sampler.function_evals(),
             &self.parameters,
             &self.state,
             &self.best_function_value_history,
@@ -554,15 +553,12 @@ impl<'a> CMAES<'a> {
     /// This function is called automatically if [`CMAESOptions::enable_printing`] is set. Must be
     /// called manually after termination to print the final state if [`run`][`Self::run`] isn't
     /// used.
-    pub fn print_final_info(&self, termination_reason: Option<TerminationReason>) {
+    pub fn print_final_info(&self, termination_reason: TerminationReason) {
         if self.sampler.function_evals() != self.last_print_evals {
             self.print_info();
         }
 
-        match termination_reason {
-            Some(reason) => println!("Terminated with reason `{}`", reason),
-            None => println!("Did not terminate"),
-        }
+        println!("Terminated with reason `{}`", termination_reason);
 
         let current_best = self.current_best_individual();
         let overall_best = self.overall_best_individual();
@@ -570,8 +566,9 @@ impl<'a> CMAES<'a> {
         if let (Some(current), Some(overall)) = (current_best, overall_best) {
             println!("Current best function value: {:e}", current.value);
             println!("Overall best function value: {:e}", overall.value);
-            println!("Final mean: {}", self.state.mean());
         }
+
+        println!("Final mean: {}", self.state.mean());
     }
 }
 
@@ -624,13 +621,14 @@ mod tests {
         let evals_per_plot_point = 100;
         let mut cmaes = CMAESOptions::new(10)
             .enable_plot(PlotOptions::new(evals_per_plot_point, false))
+            .max_generations(1)
             .build(|_: &DVector<f64>| 0.0)
             .unwrap();
 
         // The initial state is always plotted
         assert_eq!(cmaes.get_plot().unwrap().len(), 1);
 
-        let _ = cmaes.run(1);
+        let _ = cmaes.run();
 
         // The final state is always plotted when using CMAES::run, regardless of
         // evals_per_plot_point

@@ -9,7 +9,7 @@ use rand;
 use std::f64::consts::PI;
 
 fn main() {
-    let function = rosenbrock;
+    let function = rastrigin;
 
     // Customize parameters for the problem
     let dim = 10;
@@ -25,23 +25,22 @@ fn main() {
         // Enable recording the plot and printing info
         .enable_plot(PlotOptions::new(0, false))
         .enable_printing(200)
+        .max_generations(10_000)
+        .max_function_evals(100_000)
         .build(function.clone())
         .unwrap();
 
     // Find a solution
-    let max_generations = 20000;
-    let solution = cmaes_state.run(max_generations);
+    let solution = cmaes_state.run();
 
     println!(
         "Final mean has value {:e}",
         function.evaluate(cmaes_state.mean())
     );
-    if let Some(s) = solution {
-        println!(
-            "Solution individual has value {:e} and point {}",
-            s.overall_best.value, s.overall_best.point,
-        );
-    }
+    println!(
+        "Solution individual has value {:e} and point {}",
+        solution.overall_best.value, solution.overall_best.point,
+    );
 
     // Save the plot
     let plot = cmaes_state.get_plot().unwrap();

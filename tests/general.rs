@@ -25,9 +25,13 @@ fn run_test<F: ObjectiveFunction + Clone + 'static>(
     let mut reasons = HashMap::new();
 
     for _ in 0..TEST_REPETITIONS {
-        let mut cmaes_state = options.clone().build(objective_function.clone()).unwrap();
+        let mut cmaes_state = options
+            .clone()
+            .max_generations(MAX_GENERATIONS)
+            .build(objective_function.clone())
+            .unwrap();
 
-        let result = cmaes_state.run(MAX_GENERATIONS).expect("did not terminate");
+        let result = cmaes_state.run();
         let evals = cmaes_state.function_evals();
 
         if !(result.overall_best.value < options.tol_fun) {

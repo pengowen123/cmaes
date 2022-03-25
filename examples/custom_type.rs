@@ -49,15 +49,12 @@ fn main() {
             .unwrap();
 
         // Find a solution
-        let max_generations = 20000;
-        let solution = cmaes_state.run(max_generations);
+        let solution = cmaes_state.run();
 
-        if let Some(s) = solution {
-            println!(
-                "Solution individual has value {:e} and point {}",
-                s.overall_best.value, s.overall_best.point,
-            );
-        }
+        println!(
+            "Solution individual has value {:e} and point {}",
+            solution.overall_best.value, solution.overall_best.point,
+        );
     }
 
     // Retrieve the state stored in the objective function

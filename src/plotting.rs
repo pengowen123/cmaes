@@ -194,7 +194,7 @@ impl PlotOptions {
 ///     .build(sphere)
 ///     .unwrap();
 ///
-/// let result = state.run(20000);
+/// let result = state.run();
 ///
 /// state.get_plot().unwrap().save_to_file("plot.png", true).unwrap();
 /// ```

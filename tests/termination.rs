@@ -17,9 +17,11 @@ fn run_test<F: ObjectiveFunction + Clone + 'static, R: Fn(TerminationReason) -> 
 ) {
     let mut mismatches = Vec::new();
     for _ in 0..TEST_REPETITIONS {
-        let mut cmaes_state = options.clone().build(objective_function.clone()).unwrap();
+        let mut options = options.clone();
+        options.max_generations = options.max_generations.or(Some(MAX_GENERATIONS));
+        let mut cmaes_state = options.build(objective_function.clone()).unwrap();
 
-        let result = cmaes_state.run(MAX_GENERATIONS).expect("did not terminate");
+        let result = cmaes_state.run();
 
         if !check_reason(result.reason) {
             mismatches.push(result.reason);
@@ -28,6 +30,34 @@ fn run_test<F: ObjectiveFunction + Clone + 'static, R: Fn(TerminationReason) -> 
     if mismatches.len() > max_mismatches {
         panic!("exceeded {} mismatches: {:?}", max_mismatches, mismatches);
     }
+}
+
+#[test]
+fn test_max_function_evals() {
+    // `max_function_evals` is reached more quickly than the algorithm converges
+    let function = |x: &DVector<f64>| x.magnitude().powi(2);
+    run_test(
+        function,
+        CMAESOptions::new(2)
+            .initial_mean(vec![5.0; 2])
+            .max_function_evals(100),
+        |r| matches!(r, TerminationReason::MaxFunctionEvals),
+        0,
+    );
+}
+
+#[test]
+fn test_max_generations() {
+    // `max_generations` is reached more quickly than the algorithm converges
+    let function = |x: &DVector<f64>| x.magnitude().powi(2);
+    run_test(
+        function,
+        CMAESOptions::new(2)
+            .initial_mean(vec![5.0; 2])
+            .max_generations(20),
+        |r| matches!(r, TerminationReason::MaxGenerations),
+        0,
+    );
 }
 
 #[test]

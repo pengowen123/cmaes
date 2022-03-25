@@ -47,6 +47,14 @@ pub struct CMAESOptions {
     /// The learning rate for adapting the mean. Can be reduced for noisy functions. Default value
     /// is `1.0`.
     pub cm: f64,
+    /// The value to use for the
+    /// [`TerminationReason::MaxFunctionEvals`][crate::TerminationReason::MaxFunctionEvals]
+    /// termination criterion. Default value is `None`.
+    pub max_function_evals: Option<usize>,
+    /// The value to use for the
+    /// [`TerminationReason::MaxGenerations`][crate::TerminationReason::MaxGenerations]
+    /// termination criterion. Default value is `None`.
+    pub max_generations: Option<usize>,
     /// The value to use for the [`TerminationReason::TolFun`][crate::TerminationReason::TolFun]
     /// termination criterion. Default value is `1e-12`.
     pub tol_fun: f64,
@@ -77,6 +85,8 @@ impl CMAESOptions {
             population_size: 4 + (3.0 * (dimensions as f64).ln()).floor() as usize,
             weights: Weights::Negative,
             cm: 1.0,
+            max_function_evals: None,
+            max_generations: None,
             tol_fun: 1e-12,
             tol_x: None,
             seed: None,
@@ -114,6 +124,20 @@ impl CMAESOptions {
     /// `1.0`.
     pub fn cm(mut self, cm: f64) -> Self {
         self.cm = cm;
+        self
+    }
+
+    /// Changes the value for the `MaxFunctionEvals` termination criterion from the default value
+    /// (see [`TerminationReason::MaxFunctionEvals`][crate::TerminationReason::MaxFunctionEvals]).
+    pub fn max_function_evals(mut self, max_function_evals: usize) -> Self {
+        self.max_function_evals = Some(max_function_evals);
+        self
+    }
+
+    /// Changes the value for the `MaxGenerations` termination criterion from the default value
+    /// (see [`TerminationReason::MaxGenerations`][crate::TerminationReason::MaxGenerations]).
+    pub fn max_generations(mut self, max_generations: usize) -> Self {
+        self.max_generations = Some(max_generations);
         self
     }
 

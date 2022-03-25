@@ -11,6 +11,10 @@ use weights::{FinalWeights, InitialWeights};
 /// Parameters of the termination criteria
 #[derive(Clone, Debug)]
 pub(crate) struct TerminationParameters {
+    /// Value for the MaxFunctionEvals termination criterion
+    pub max_function_evals: Option<usize>,
+    /// Value for the MaxGenerations termination criterion
+    pub max_generations: Option<usize>,
     /// Value for the TolFun termination criterion
     pub tol_fun: f64,
     /// Value for the TolX termination criterion
@@ -162,6 +166,20 @@ impl Parameters {
     /// Returns the damping factor for the step size update `damp_s`.
     pub fn damp_s(&self) -> f64 {
         self.damp_s
+    }
+
+    /// Returns the value for the
+    /// [`TerminationReason::MaxFunctionEvals`][crate::TerminationReason::MaxFunctionEvals]
+    /// termination criterion.
+    pub fn max_function_evals(&self) -> Option<usize> {
+        self.termination.max_function_evals
+    }
+
+    /// Returns the value for the
+    /// [`TerminationReason::MaxGenerations`][crate::TerminationReason::MaxGenerations]
+    /// termination criterion.
+    pub fn max_generations(&self) -> Option<usize> {
+        self.termination.max_generations
     }
 
     /// Returns the value for the [`TerminationReason::TolFun`][crate::TerminationReason::TolFun]

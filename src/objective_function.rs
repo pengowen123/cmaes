@@ -66,7 +66,7 @@ use nalgebra::DVector;
 ///
 /// {
 ///     let mut cmaes_state = CMAESOptions::new(2).build(&mut custom).unwrap();
-///     cmaes_state.run(20000);
+///     cmaes_state.run();
 /// }
 ///
 /// println!("{}", custom.counter);
