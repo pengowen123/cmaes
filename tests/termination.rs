@@ -23,8 +23,10 @@ fn run_test<F: ObjectiveFunction + Clone + 'static, R: Fn(TerminationReason) -> 
 
         let result = cmaes_state.run();
 
-        if !check_reason(result.reason) {
-            mismatches.push(result.reason);
+        for reason in result.reasons {
+            if !check_reason(reason) {
+                mismatches.push(reason);
+            }
         }
     }
     if mismatches.len() > max_mismatches {

@@ -10,7 +10,7 @@ use crate::sampling::EvaluatedPoint;
 use crate::state::State;
 use crate::utils;
 
-/// Represents the reason for the algorithm terminating. Most of these are for preventing numerical
+/// Represents a reason for the algorithm terminating. Most of these are for preventing numerical
 /// instability, while `Tol*` are problem-dependent parameters and `Max*` are for bounding
 /// iteration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -60,7 +60,7 @@ impl fmt::Display for TerminationReason {
 }
 
 /// Checks the state, objective function value history, and current generation, and returns
-/// `Some` if any termination criterion is met
+/// a list of any termination criteria that are met
 pub(crate) fn check_termination_criteria(
     current_function_evals: usize,
     parameters: &Parameters,
@@ -69,7 +69,9 @@ pub(crate) fn check_termination_criteria(
     median_function_value_history: &VecDeque<f64>,
     max_history_size: usize,
     individuals: &[EvaluatedPoint],
-) -> Option<TerminationReason> {
+) -> Vec<TerminationReason> {
+    let mut result = Vec::new();
+
     let dim = parameters.dim();
     let lambda = parameters.lambda();
     let initial_sigma = parameters.initial_sigma();
@@ -86,14 +88,14 @@ pub(crate) fn check_termination_criteria(
     // Check TerminationReason::MaxFunctionEvals
     if let Some(max_function_evals) = parameters.max_function_evals() {
         if current_function_evals >= max_function_evals {
-            return Some(TerminationReason::MaxFunctionEvals);
+            result.push(TerminationReason::MaxFunctionEvals);
         }
     }
 
     // Check TerminationReason::MaxGenerations
     if let Some(max_generations) = parameters.max_generations() {
         if state.generation() >= max_generations {
-            return Some(TerminationReason::MaxGenerations);
+            result.push(TerminationReason::MaxGenerations);
         }
     }
 
@@ -118,7 +120,7 @@ pub(crate) fn check_termination_criteria(
         range_past_generations_a = Some(range);
 
         if range < tol_fun && individuals.iter().all(|p| p.value() < tol_fun) {
-            return Some(TerminationReason::TolFun);
+            result.push(TerminationReason::TolFun);
         }
     }
 
@@ -126,14 +128,14 @@ pub(crate) fn check_termination_criteria(
     if (0..dim).all(|i| (sigma * cov[(i, i)]).abs() < tol_x)
         && path_c.iter().all(|x| (sigma * *x).abs() < tol_x)
     {
-        return Some(TerminationReason::TolX);
+        result.push(TerminationReason::TolX);
     }
 
     // Check TerminationReason::ConditionCov
     let cond = state.axis_ratio().powi(2);
 
     if !cond.is_normal() || cond > 1e14 {
-        return Some(TerminationReason::ConditionCov);
+        result.push(TerminationReason::ConditionCov);
     }
 
     // Check TerminationReason::NoEffectAxis
@@ -146,18 +148,18 @@ pub(crate) fn check_termination_criteria(
         * cov_eigenvectors.column(index_to_check);
 
     if mean == &(mean + no_effect_axis_check) {
-        return Some(TerminationReason::NoEffectAxis);
+        result.push(TerminationReason::NoEffectAxis);
     }
 
     // Check TerminationReason::NoEffectCoord
     if (0..dim).any(|i| mean[i] == mean[i] + 0.2 * sigma * cov[(i, i)]) {
-        return Some(TerminationReason::NoEffectCoord);
+        result.push(TerminationReason::NoEffectCoord);
     }
 
     // Check TerminationReason::EqualFunValues
     if let Some(range) = range_past_generations_a {
         if range == 0.0 {
-            return Some(TerminationReason::EqualFunValues);
+            result.push(TerminationReason::EqualFunValues);
         }
     }
 
@@ -197,7 +199,7 @@ pub(crate) fn check_termination_criteria(
         if !did_values_improve(best_function_value_history)
             && !did_values_improve(median_function_value_history)
         {
-            return Some(TerminationReason::Stagnation);
+            result.push(TerminationReason::Stagnation);
         }
     }
 
@@ -210,10 +212,10 @@ pub(crate) fn check_termination_criteria(
             .unwrap();
 
     if max_standard_deviation / initial_sigma > 1e8 {
-        return Some(TerminationReason::TolXUp);
+        result.push(TerminationReason::TolXUp);
     }
 
-    None
+    result
 }
 
 #[cfg(test)]
@@ -292,7 +294,7 @@ mod tests {
                 MAX_HISTORY_LENGTH,
                 &get_dummy_generation(0.0),
             ),
-            Some(TerminationReason::MaxFunctionEvals),
+            vec![TerminationReason::MaxFunctionEvals],
         );
     }
 
@@ -313,7 +315,7 @@ mod tests {
                 MAX_HISTORY_LENGTH,
                 &get_dummy_generation(0.0),
             ),
-            Some(TerminationReason::MaxGenerations),
+            vec![TerminationReason::MaxGenerations],
         );
     }
 
@@ -323,18 +325,16 @@ mod tests {
         let initial_sigma = None;
         let state = get_state(initial_sigma);
 
-        assert_eq!(
-            check_termination_criteria(
-                0,
-                &get_parameters(initial_sigma, None, None),
-                &state,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(0.0),
-            ),
-            None,
-        );
+        assert!(check_termination_criteria(
+            0,
+            &get_parameters(initial_sigma, None, None),
+            &state,
+            &VecDeque::new(),
+            &VecDeque::new(),
+            MAX_HISTORY_LENGTH,
+            &get_dummy_generation(0.0),
+        )
+        .is_empty());
     }
 
     #[test]
@@ -353,18 +353,16 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(
-            check_termination_criteria(
-                0,
-                &get_parameters(initial_sigma, None, None),
-                &state,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(0.0),
-            ),
-            None,
-        );
+        assert!(check_termination_criteria(
+            0,
+            &get_parameters(initial_sigma, None, None),
+            &state,
+            &VecDeque::new(),
+            &VecDeque::new(),
+            MAX_HISTORY_LENGTH,
+            &get_dummy_generation(0.0),
+        )
+        .is_empty());
     }
 
     #[test]
@@ -388,7 +386,7 @@ mod tests {
                 MAX_HISTORY_LENGTH,
                 &get_dummy_generation(0.0),
             ),
-            Some(TerminationReason::TolFun),
+            vec![TerminationReason::TolFun],
         );
     }
 
@@ -410,7 +408,7 @@ mod tests {
                 MAX_HISTORY_LENGTH,
                 &get_dummy_generation(0.0),
             ),
-            Some(TerminationReason::TolX),
+            vec![TerminationReason::TolX],
         );
     }
 
@@ -435,7 +433,7 @@ mod tests {
                 MAX_HISTORY_LENGTH,
                 &get_dummy_generation(1.0),
             ),
-            Some(TerminationReason::EqualFunValues),
+            vec![TerminationReason::EqualFunValues],
         );
     }
 
@@ -469,7 +467,7 @@ mod tests {
                 values.len(),
                 &get_dummy_generation(1.0),
             ),
-            Some(TerminationReason::Stagnation),
+            vec![TerminationReason::Stagnation],
         );
     }
 
@@ -491,7 +489,7 @@ mod tests {
                 MAX_HISTORY_LENGTH,
                 &get_dummy_generation(0.0),
             ),
-            Some(TerminationReason::TolXUp),
+            vec![TerminationReason::TolXUp],
         );
     }
 
@@ -517,7 +515,7 @@ mod tests {
         for g in 0..DIM {
             *state.mut_generation() = g;
 
-            let termination_reason = check_termination_criteria(
+            let termination_reasons = check_termination_criteria(
                 0,
                 &get_parameters(initial_sigma, None, None),
                 &state,
@@ -527,8 +525,8 @@ mod tests {
                 &get_dummy_generation(0.0),
             );
 
-            if let Some(reason) = termination_reason {
-                assert_eq!(reason, TerminationReason::NoEffectAxis);
+            if !termination_reasons.is_empty() {
+                assert_eq!(termination_reasons, vec![TerminationReason::NoEffectAxis]);
                 terminated = true;
             }
         }
@@ -553,7 +551,7 @@ mod tests {
         for g in 0..DIM {
             *state.mut_generation() = g;
 
-            let termination_reason = check_termination_criteria(
+            let termination_reasons = check_termination_criteria(
                 0,
                 &get_parameters(initial_sigma, None, None),
                 &state,
@@ -563,8 +561,8 @@ mod tests {
                 &get_dummy_generation(0.0),
             );
 
-            if let Some(reason) = termination_reason {
-                assert_eq!(reason, TerminationReason::NoEffectCoord);
+            if !termination_reasons.is_empty() {
+                assert_eq!(termination_reasons, vec![TerminationReason::NoEffectCoord]);
                 terminated = true;
             }
         }
@@ -596,7 +594,7 @@ mod tests {
                 MAX_HISTORY_LENGTH,
                 &get_dummy_generation(0.0),
             ),
-            Some(TerminationReason::ConditionCov),
+            vec![TerminationReason::ConditionCov],
         );
     }
 }

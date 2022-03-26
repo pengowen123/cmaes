@@ -7,6 +7,8 @@
 - Added `Scale` wrapper type for objective functions that scales the search space.
 - Added `MaxFunctionEvals` and `MaxGenerations` termination criteria.
 - Adjusted the signatures of `CMAES::run` and `CMAES::print_final_info` to reflect the new termination criteria.
+- Renamed `reason` field of `TerminationData` to `reasons` and changed its type from `TerminationReason` to `Vec<TerminationReason>`.
+- Change signature of `CMAES::print_final_info` to take `&[TerminationReason]` instead of `TerminationReason`.
 
 ## 0.1.1 (March 4th, 2022)
 

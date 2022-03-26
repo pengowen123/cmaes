@@ -95,14 +95,14 @@ impl Individual {
 /// - Best individual of the latest generation
 /// - Best individual overall
 /// - Final mean, which may be better than either individual
-/// - Reason for termination, which can be used to decide how to interpret the result and
+/// - Reasons for termination, which can be used to decide how to interpret the result and
 /// whether and how to restart the algorithm
 #[derive(Clone, Debug)]
 pub struct TerminationData {
     pub current_best: Individual,
     pub overall_best: Individual,
     pub final_mean: DVector<f64>,
-    pub reason: TerminationReason,
+    pub reasons: Vec<TerminationReason>,
 }
 
 /// A type that handles algorithm iteration and printing/plotting of results. Use [`CMAESOptions`]
@@ -260,7 +260,7 @@ impl<'a> CMAES<'a> {
         self.add_plot_point();
 
         if self.print_gap_evals.is_some() {
-            self.print_final_info(result.reason);
+            self.print_final_info(&result.reasons);
         }
 
         result
@@ -319,7 +319,9 @@ impl<'a> CMAES<'a> {
         let individuals = match self.sample(max_history_size) {
             Ok(x) => x,
             Err(_) => {
-                return Some(self.get_termination_data(TerminationReason::InvalidFunctionValue));
+                return Some(
+                    self.get_termination_data(vec![TerminationReason::InvalidFunctionValue]),
+                );
             }
         };
 
@@ -333,7 +335,7 @@ impl<'a> CMAES<'a> {
             )
             .is_err()
         {
-            return Some(self.get_termination_data(TerminationReason::PosDefCov));
+            return Some(self.get_termination_data(vec![TerminationReason::PosDefCov]));
         }
 
         // Plot latest state
@@ -359,8 +361,8 @@ impl<'a> CMAES<'a> {
             }
         }
 
-        // Terminate with the current best individual if any termination criterion is met
-        let termination_reason = termination::check_termination_criteria(
+        // Terminate with the current best individual if any termination criteria are met
+        let termination_reasons = termination::check_termination_criteria(
             self.sampler.function_evals(),
             &self.parameters,
             &self.state,
@@ -370,7 +372,11 @@ impl<'a> CMAES<'a> {
             &individuals,
         );
 
-        termination_reason.map(|reason| self.get_termination_data(reason))
+        if !termination_reasons.is_empty() {
+            Some(self.get_termination_data(termination_reasons))
+        } else {
+            None
+        }
     }
 
     /// Updates the current and overall best individuals.
@@ -457,13 +463,13 @@ impl<'a> CMAES<'a> {
         self.plot.as_mut()
     }
 
-    /// Returns a `TerminationData` with the current best individual/value and the given reason.
-    fn get_termination_data(&self, reason: TerminationReason) -> TerminationData {
+    /// Returns a `TerminationData` with the current best individual/value and the given reasons.
+    fn get_termination_data(&self, reasons: Vec<TerminationReason>) -> TerminationData {
         return TerminationData {
             current_best: self.current_best_individual().unwrap().clone(),
             overall_best: self.overall_best_individual().unwrap().clone(),
             final_mean: self.state.mean().clone(),
-            reason,
+            reasons,
         };
     }
 
@@ -545,7 +551,7 @@ impl<'a> CMAES<'a> {
     /// Calls [`print_info`][Self::print_info] if not already called automatically this generation
     /// and prints the results. The values that are printed are the:
     ///
-    /// - Termination reason if given
+    /// - Termination reasons if given
     /// - Best function value of the latest generation
     /// - Best function value of any generation
     /// - Final distribution mean
@@ -553,12 +559,17 @@ impl<'a> CMAES<'a> {
     /// This function is called automatically if [`CMAESOptions::enable_printing`] is set. Must be
     /// called manually after termination to print the final state if [`run`][`Self::run`] isn't
     /// used.
-    pub fn print_final_info(&self, termination_reason: TerminationReason) {
+    pub fn print_final_info(&self, termination_reasons: &[TerminationReason]) {
         if self.sampler.function_evals() != self.last_print_evals {
             self.print_info();
         }
 
-        println!("Terminated with reason `{}`", termination_reason);
+        let reasons_str = termination_reasons
+            .iter()
+            .map(|r| format!("`{}`", r))
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("Terminated with reason(s): {}", reasons_str);
 
         let current_best = self.current_best_individual();
         let overall_best = self.overall_best_individual();
