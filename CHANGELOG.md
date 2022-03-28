@@ -10,6 +10,7 @@
 - Renamed `reason` field of `TerminationData` to `reasons` and changed its type from `TerminationReason` to `Vec<TerminationReason>`.
 - Changed signature of `CMAES::print_final_info` to take `&[TerminationReason]` instead of `TerminationReason`.
 - Fixed `TolFun` termination criterion checking whether the current generation's function values are all below `tol_fun` instead of whether the range of them is.
+- Added `FunTarget` termination criterion that checks whether a function value threshold has been reached.
 
 ## 0.1.1 (March 4th, 2022)
 

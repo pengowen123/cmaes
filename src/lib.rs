@@ -15,6 +15,7 @@
 //!
 //! let dim = 10;
 //! let mut cmaes_state = CMAESOptions::new(dim)
+//!     .fun_target(1e-8)
 //!     .initial_mean(vec![1.0; dim])
 //!     .enable_printing(200)
 //!     .max_generations(20000)
@@ -201,6 +202,7 @@ impl<'a> CMAES<'a> {
         let termination_parameters = TerminationParameters {
             max_function_evals: options.max_function_evals,
             max_generations: options.max_generations,
+            fun_target: options.fun_target,
             tol_fun: options.tol_fun,
             tol_x,
         };

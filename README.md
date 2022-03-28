@@ -37,6 +37,7 @@ let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
 
 let dim = 10;
 let mut cmaes_state = CMAESOptions::new(dim)
+    .fun_target(1e-8)
     .initial_mean(vec![1.0; dim])
     .enable_printing(200)
     .enable_plot(PlotOptions::new(0, false))

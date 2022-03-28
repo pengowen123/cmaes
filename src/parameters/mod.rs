@@ -15,6 +15,8 @@ pub(crate) struct TerminationParameters {
     pub max_function_evals: Option<usize>,
     /// Value for the MaxGenerations termination criterion
     pub max_generations: Option<usize>,
+    /// Value for the FunTarget termination criterion
+    pub fun_target: f64,
     /// Value for the TolFun termination criterion
     pub tol_fun: f64,
     /// Value for the TolX termination criterion
@@ -180,6 +182,12 @@ impl Parameters {
     /// termination criterion.
     pub fn max_generations(&self) -> Option<usize> {
         self.termination.max_generations
+    }
+
+    /// Returns the value for the
+    /// [`TerminationReason::FunTarget`][crate::TerminationReason::FunTarget] termination criterion.
+    pub fn fun_target(&self) -> f64 {
+        self.termination.fun_target
     }
 
     /// Returns the value for the [`TerminationReason::TolFun`][crate::TerminationReason::TolFun]

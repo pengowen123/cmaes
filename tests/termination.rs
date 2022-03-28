@@ -63,9 +63,21 @@ fn test_max_generations() {
 }
 
 #[test]
+fn test_fun_target() {
+    // The function reaches `fun_target` more quickly than the algorithm converges
+    let function = |x: &DVector<f64>| x.magnitude().powi(2);
+    run_test(
+        function,
+        CMAESOptions::new(2).initial_mean(vec![5.0; 2]),
+        |r| matches!(r, TerminationReason::FunTarget),
+        0,
+    );
+}
+
+#[test]
 fn test_tol_fun() {
     // The function reaches `tol_fun` more quickly than the algorithm converges
-    let function = |x: &DVector<f64>| x.magnitude().powi(2);
+    let function = |x: &DVector<f64>| 1.0 + x.magnitude().powi(2);
     run_test(
         function,
         CMAESOptions::new(2).initial_mean(vec![5.0; 2]),
@@ -92,7 +104,7 @@ fn test_equal_fun_values() {
     let function = |x: &DVector<f64>| x.magnitude().max(1e-6);
     run_test(
         function,
-        CMAESOptions::new(2).initial_mean(vec![5.0; 2]),
+        CMAESOptions::new(2).tol_fun(0.0).initial_mean(vec![5.0; 2]),
         |r| matches!(r, TerminationReason::EqualFunValues),
         0,
     );
@@ -130,7 +142,7 @@ fn run_test_no_effect<F: Fn(TerminationReason) -> bool + Clone>(check_reason: F)
         |x: &DVector<f64>| 1e-8 + (2.0 * x[0] - x[1]).abs().powf(1.5) + (2.0 - x[1]).powi(2);
     run_test(
         function,
-        CMAESOptions::new(2).tol_x(1e-16).initial_step_size(4.0),
+        CMAESOptions::new(2).tol_fun(0.0).tol_x(1e-16).initial_step_size(4.0),
         check_reason,
         1,
     );

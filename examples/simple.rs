@@ -9,7 +9,7 @@ use rand;
 use std::f64::consts::PI;
 
 fn main() {
-    let function = rastrigin;
+    let function = rosenbrock;
 
     // Customize parameters for the problem
     let dim = 10;
@@ -18,7 +18,7 @@ fn main() {
 
     let mut cmaes_state = CMAESOptions::new(dim)
         .weights(Weights::Positive)
-        .tol_fun(1e-6)
+        .fun_target(1e-10)
         .tol_x(1e-13)
         .initial_step_size(0.1)
         .initial_mean(vec![0.1; dim])

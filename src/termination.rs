@@ -19,8 +19,11 @@ pub enum TerminationReason {
     MaxFunctionEvals,
     /// The maximum number of generations has been reached.
     MaxGenerations,
+    /// The target objective function value has been reached.
+    FunTarget,
     /// The range of function values of the latest generation and the range of the best function
-    /// values of many consecutive generations lie below `tol_fun`.
+    /// values of many consecutive generations lie below `tol_fun`. Indicates that the function
+    /// value has stopped changing significantly.
     TolFun,
     /// The standard deviation of the distribution is smaller than `tol_x` in every coordinate and
     /// the mean has not moved much recently. Indicates that the algorithm has converged.
@@ -75,6 +78,7 @@ pub(crate) fn check_termination_criteria(
     let dim = parameters.dim();
     let lambda = parameters.lambda();
     let initial_sigma = parameters.initial_sigma();
+    let fun_target = parameters.fun_target();
     let tol_fun = parameters.tol_fun();
     let tol_x = parameters.tol_x();
 
@@ -97,6 +101,11 @@ pub(crate) fn check_termination_criteria(
         if state.generation() >= max_generations {
             result.push(TerminationReason::MaxGenerations);
         }
+    }
+
+    // Check TerminationReason::FunTarget
+    if individuals.iter().any(|ind| ind.value() <= fun_target) {
+        result.push(TerminationReason::FunTarget);
     }
 
     // Check TerminationReason::TolFun
@@ -238,6 +247,7 @@ mod tests {
         let termination_parameters = TerminationParameters {
             max_function_evals: max_function_evals,
             max_generations: max_generations,
+            fun_target: 1e-12,
             tol_fun: 1e-12,
             tol_x: 1e-12 * initial_sigma,
         };
@@ -288,7 +298,7 @@ mod tests {
                 &VecDeque::new(),
                 &VecDeque::new(),
                 MAX_HISTORY_LENGTH,
-                &get_dummy_generation(0.0),
+                &get_dummy_generation(1.0),
             ),
             vec![TerminationReason::MaxFunctionEvals],
         );
@@ -309,7 +319,7 @@ mod tests {
                 &VecDeque::new(),
                 &VecDeque::new(),
                 MAX_HISTORY_LENGTH,
-                &get_dummy_generation(0.0),
+                &get_dummy_generation(1.0),
             ),
             vec![TerminationReason::MaxGenerations],
         );
@@ -328,7 +338,7 @@ mod tests {
             &VecDeque::new(),
             &VecDeque::new(),
             MAX_HISTORY_LENGTH,
-            &get_dummy_generation(0.0),
+            &get_dummy_generation(1.0),
         )
         .is_empty());
     }
@@ -356,9 +366,29 @@ mod tests {
             &VecDeque::new(),
             &VecDeque::new(),
             MAX_HISTORY_LENGTH,
-            &get_dummy_generation(0.0),
+            &get_dummy_generation(1.0),
         )
         .is_empty());
+    }
+
+    #[test]
+    fn test_check_termination_criteria_fun_target() {
+        // A best function value below a threshold produces FunTarget
+        let initial_sigma = None;
+        let state = get_state(initial_sigma);
+
+        assert_eq!(
+            check_termination_criteria(
+                0,
+                &get_parameters(initial_sigma, None, None),
+                &state,
+                &VecDeque::new(),
+                &VecDeque::new(),
+                MAX_HISTORY_LENGTH,
+                &get_dummy_generation(1e-16),
+            ),
+            vec![TerminationReason::FunTarget],
+        );
     }
 
     #[test]
@@ -401,7 +431,7 @@ mod tests {
                 &VecDeque::new(),
                 &VecDeque::new(),
                 MAX_HISTORY_LENGTH,
-                &get_dummy_generation(0.0),
+                &get_dummy_generation(1.0),
             ),
             vec![TerminationReason::TolX],
         );
@@ -492,7 +522,7 @@ mod tests {
                 &VecDeque::new(),
                 &VecDeque::new(),
                 MAX_HISTORY_LENGTH,
-                &get_dummy_generation(0.0),
+                &get_dummy_generation(1.0),
             ),
             vec![TerminationReason::TolXUp],
         );
@@ -527,7 +557,7 @@ mod tests {
                 &VecDeque::new(),
                 &VecDeque::new(),
                 MAX_HISTORY_LENGTH,
-                &get_dummy_generation(0.0),
+                &get_dummy_generation(1.0),
             );
 
             if !termination_reasons.is_empty() {
@@ -563,7 +593,7 @@ mod tests {
                 &VecDeque::new(),
                 &VecDeque::new(),
                 MAX_HISTORY_LENGTH,
-                &get_dummy_generation(0.0),
+                &get_dummy_generation(1.0),
             );
 
             if !termination_reasons.is_empty() {
@@ -597,7 +627,7 @@ mod tests {
                 &VecDeque::new(),
                 &VecDeque::new(),
                 MAX_HISTORY_LENGTH,
-                &get_dummy_generation(0.0),
+                &get_dummy_generation(1.0),
             ),
             vec![TerminationReason::ConditionCov],
         );
