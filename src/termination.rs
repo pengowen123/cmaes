@@ -19,8 +19,8 @@ pub enum TerminationReason {
     MaxFunctionEvals,
     /// The maximum number of generations has been reached.
     MaxGenerations,
-    /// All function values of the latest generation and the range of the best function values of
-    /// many consecutive generations lie below `tol_fun`.
+    /// The range of function values of the latest generation and the range of the best function
+    /// values of many consecutive generations lie below `tol_fun`.
     TolFun,
     /// The standard deviation of the distribution is smaller than `tol_x` in every coordinate and
     /// the mean has not moved much recently. Indicates that the algorithm has converged.
@@ -104,22 +104,18 @@ pub(crate) fn check_termination_criteria(
     let mut range_past_generations_a = None;
 
     if best_function_value_history.len() >= past_generations_a {
-        let max = best_function_value_history
-            .iter()
-            .take(past_generations_a)
-            .max_by(|a, b| utils::partial_cmp(*a, *b))
-            .unwrap();
+        let range_history = utils::range(
+            best_function_value_history
+                .iter()
+                .take(past_generations_a)
+                .cloned(),
+        )
+        .unwrap();
+        range_past_generations_a = Some(range_history);
 
-        let min = best_function_value_history
-            .iter()
-            .take(past_generations_a)
-            .min_by(|a, b| utils::partial_cmp(*a, *b))
-            .unwrap();
+        let range_current = utils::range(individuals.iter().map(|p| p.value())).unwrap();
 
-        let range = (max - min).abs();
-        range_past_generations_a = Some(range);
-
-        if range < tol_fun && individuals.iter().all(|p| p.value() < tol_fun) {
+        if range_history < tol_fun && range_current < tol_fun {
             result.push(TerminationReason::TolFun);
         }
     }
@@ -208,7 +204,7 @@ pub(crate) fn check_termination_criteria(
         * cov_sqrt_eigenvalues
             .diagonal()
             .iter()
-            .max_by(|a, b| utils::partial_cmp(*a, *b))
+            .max_by(|a, b| utils::partial_cmp(**a, **b))
             .unwrap();
 
     if max_standard_deviation / initial_sigma > 1e8 {
@@ -367,8 +363,7 @@ mod tests {
 
     #[test]
     fn test_check_termination_criteria_tol_fun() {
-        // A population of below-tolerance function values and a small range of historical values
-        // produces TolFun
+        // Small ranges of current and historical function values produces TolFun
         let initial_sigma = None;
         let state = get_state(initial_sigma);
 
@@ -384,7 +379,7 @@ mod tests {
                 &best_function_value_history,
                 &VecDeque::new(),
                 MAX_HISTORY_LENGTH,
-                &get_dummy_generation(0.0),
+                &get_dummy_generation(best_function_value_history[0]),
             ),
             vec![TerminationReason::TolFun],
         );
@@ -414,7 +409,8 @@ mod tests {
 
     #[test]
     fn test_check_termination_criteria_equal_fun_values() {
-        // A zero range of historical values (that are above tol_fun) produces EqualFunValues
+        // A zero range of historical best values with a non-small range of current function
+        // values produces EqualFunValues
         let initial_sigma = None;
         let state = get_state(initial_sigma);
 
@@ -422,6 +418,15 @@ mod tests {
         best_function_value_history.extend(vec![1.0; 100]);
         // Equal to 1.0 due to lack of precision
         best_function_value_history.push_front(1.0 + 1e-17);
+
+        let mut individuals = get_dummy_generation(1.5);
+        individuals[0] = EvaluatedPoint::new(
+            DVector::zeros(DIM),
+            &DVector::zeros(DIM),
+            0.0,
+            &mut |_: &DVector<f64>| best_function_value_history[0],
+        )
+        .unwrap();
 
         assert_eq!(
             check_termination_criteria(
@@ -431,7 +436,7 @@ mod tests {
                 &best_function_value_history,
                 &VecDeque::new(),
                 MAX_HISTORY_LENGTH,
-                &get_dummy_generation(1.0),
+                &individuals,
             ),
             vec![TerminationReason::EqualFunValues],
         );

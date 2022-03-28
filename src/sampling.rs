@@ -73,7 +73,7 @@ impl<'a> Sampler<'a> {
 
         self.function_evals += points.len();
 
-        points.sort_by(|a, b| utils::partial_cmp(&a.value, &b.value));
+        points.sort_by(|a, b| utils::partial_cmp(a.value, b.value));
         Ok(points)
     }
 

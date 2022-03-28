@@ -106,7 +106,7 @@ impl PlotData {
         }
 
         let sqrt_eigenvalues = sqrt_eigenvalues.as_mut_slice();
-        sqrt_eigenvalues.sort_by(utils::partial_cmp);
+        sqrt_eigenvalues.sort_by(|a, b| utils::partial_cmp(*a, *b));
         for (i, x) in sqrt_eigenvalues.iter().enumerate() {
             self.sqrt_eigenvalues[i].push(apply_offset(*x));
         }
@@ -703,8 +703,17 @@ fn get_log_range<I: Iterator<Item = f64> + Clone>(
 ) {
     // Margin to be added to the top and bottom of the range
     let margin = 0.4;
-    let log_min = iter.clone().min_by(utils::partial_cmp).unwrap().log10() - margin;
-    let log_max = iter.max_by(utils::partial_cmp).unwrap().log10() + margin;
+    let log_min = iter
+        .clone()
+        .min_by(|a, b| utils::partial_cmp(*a, *b))
+        .unwrap()
+        .log10()
+        - margin;
+    let log_max = iter
+        .max_by(|a, b| utils::partial_cmp(*a, *b))
+        .unwrap()
+        .log10()
+        + margin;
 
     let num_labels = ((log_max - log_min).round() as usize).min(26);
     (
@@ -716,8 +725,11 @@ fn get_log_range<I: Iterator<Item = f64> + Clone>(
 /// Returns a range encompassing all values in the iterator and the number of y-labels to use for
 /// the range. The range has a small margin added to either end.
 fn get_range<I: Iterator<Item = f64> + Clone>(iter: I) -> (Range<f64>, usize) {
-    let mut min = iter.clone().min_by(utils::partial_cmp).unwrap();
-    let mut max = iter.max_by(utils::partial_cmp).unwrap();
+    let mut min = iter
+        .clone()
+        .min_by(|a, b| utils::partial_cmp(*a, *b))
+        .unwrap();
+    let mut max = iter.max_by(|a, b| utils::partial_cmp(*a, *b)).unwrap();
     let mut margin = (max - min) * 0.15;
 
     if margin == 0.0 {

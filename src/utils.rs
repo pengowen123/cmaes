@@ -3,8 +3,8 @@
 use std::cmp::Ordering;
 
 /// Used for finding max/min values
-pub fn partial_cmp(a: &f64, b: &f64) -> Ordering {
-    a.partial_cmp(b).unwrap_or(Ordering::Less)
+pub fn partial_cmp(a: f64, b: f64) -> Ordering {
+    a.partial_cmp(&b).unwrap_or(Ordering::Less)
 }
 
 /// Formats an `f64` for printing and tries to give it a fixed width
@@ -22,6 +22,35 @@ pub fn format_num(num: f64, target_width: usize) -> String {
     let num_exponent = num_parts.next().unwrap().parse::<i32>().unwrap();
 
     format!("{}{}e{:+03}", sign, num_digits, num_exponent)
+}
+
+/// Returns the range of the values in the iterator
+///
+/// Always returns a positive value
+/// Returns `None` if the iterator is empty or contains a `NAN` value
+pub fn range<I: IntoIterator<Item = f64>>(iter: I) -> Option<f64> {
+    let mut iter = iter.into_iter();
+    let first = iter.next();
+    let (mut min, mut max) = match first {
+        Some(x) => (x, x),
+        None => return None,
+    };
+
+    for x in iter {
+        if x.is_nan() {
+            return None;
+        }
+
+        if let Ordering::Less = partial_cmp(x, min) {
+            min = x;
+        }
+
+        if let Ordering::Greater = partial_cmp(x, max) {
+            max = x;
+        }
+    }
+
+    Some(max - min)
 }
 
 #[cfg(test)]
@@ -42,5 +71,15 @@ mod tests {
         assert_eq!("         NaN", &format_num(f64::NAN, 12));
         assert_eq!("         inf", &format_num(f64::INFINITY, 12));
         assert_eq!("        -inf", &format_num(-f64::INFINITY, 12));
+    }
+
+    #[test]
+    fn test_range() {
+        assert_eq!(1.0, range([1.0, 1.25, 1.5, 1.75, 2.0]).unwrap());
+        assert_eq!(1.0, range([2.0, 1.75, 1.5, 1.25, 1.0]).unwrap());
+        assert_eq!(1.0, range([-1.0, -1.25, -1.5, -1.75, -2.0]).unwrap());
+        assert_eq!(6.0, range([-1.0, 1.0, 3.0, 5.0]).unwrap());
+        assert!(range([-1.0, 1.0, f64::NAN, 5.0]).is_none());
+        assert!(range([]).is_none());
     }
 }
