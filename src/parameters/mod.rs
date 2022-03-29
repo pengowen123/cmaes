@@ -23,6 +23,8 @@ pub(crate) struct TerminationParameters {
     pub fun_target: f64,
     /// Value for the TolFun termination criterion
     pub tol_fun: f64,
+    /// Value for the TolFunHist termination criterion
+    pub tol_fun_hist: f64,
     /// Value for the TolX termination criterion
     pub tol_x: f64,
     /// Value for the TolXUp termination criterion
@@ -208,6 +210,13 @@ impl Parameters {
     /// termination criterion.
     pub fn tol_fun(&self) -> f64 {
         self.termination.tol_fun
+    }
+
+    /// Returns the value for the
+    /// [`TerminationReason::TolFunHist`][crate::TerminationReason::TolFunHist] termination
+    /// criterion.
+    pub fn tol_fun_hist(&self) -> f64 {
+        self.termination.tol_fun_hist
     }
 
     /// Returns the value for the [`TerminationReason::TolX`][crate::TerminationReason::TolX]

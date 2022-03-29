@@ -26,14 +26,15 @@ pub enum TerminationReason {
     FunTarget,
     /// The range of function values of the latest generation and the range of the best function
     /// values of many consecutive generations lie below `tol_fun`. Indicates that the function
-    /// value has stopped changing significantly.
+    /// value has stopped changing significantly and that the function value spread of each
+    /// generation is equally insignificant.
     TolFun,
+    /// The range of best function values in many consecutive generations is lower than
+    /// `tol_fun_hist` (i.e. little to no improvement or change is occurring).
+    TolFunHist,
     /// The standard deviation of the distribution is smaller than `tol_x` in every coordinate and
     /// the mean has not moved much recently. Indicates that the algorithm has converged.
     TolX,
-    /// The range of best function values in many consecutive generations is zero (i.e. no
-    /// improvement is occurring).
-    EqualFunValues,
     /// The best and median function values have not improved significantly over many generations.
     Stagnation,
     /// The maximum standard deviation across all distribution axes increased by a factor of more
@@ -85,6 +86,7 @@ pub(crate) fn check_termination_criteria(
     let initial_sigma = parameters.initial_sigma();
     let fun_target = parameters.fun_target();
     let tol_fun = parameters.tol_fun();
+    let tol_fun_hist = parameters.tol_fun_hist();
     let tol_x = parameters.tol_x();
     let tol_x_up = parameters.tol_x_up();
     let tol_condition_cov = parameters.tol_condition_cov();
@@ -175,10 +177,10 @@ pub(crate) fn check_termination_criteria(
         result.push(TerminationReason::NoEffectCoord);
     }
 
-    // Check TerminationReason::EqualFunValues
+    // Check TerminationReason::TolFunHist
     if let Some(range) = range_past_generations_a {
-        if range == 0.0 {
-            result.push(TerminationReason::EqualFunValues);
+        if range < tol_fun_hist {
+            result.push(TerminationReason::TolFunHist);
         }
     }
 
@@ -257,6 +259,7 @@ mod tests {
         max_function_evals: Option<usize>,
         max_generations: Option<usize>,
         max_time: Option<Duration>,
+        tol_fun_hist: Option<f64>,
     ) -> Parameters {
         let initial_sigma = initial_sigma.unwrap_or(DEFAULT_INITIAL_SIGMA);
         let lambda = 6;
@@ -267,6 +270,7 @@ mod tests {
             max_time,
             fun_target: 1e-12,
             tol_fun: 1e-12,
+            tol_fun_hist: tol_fun_hist.unwrap_or(1e-12),
             tol_x: 1e-12 * initial_sigma,
             tol_x_up: 1e8,
             tol_condition_cov: 1e14,
@@ -314,7 +318,7 @@ mod tests {
             check_termination_criteria(
                 current_function_evals,
                 Instant::now(),
-                &get_parameters(initial_sigma, Some(100), None, None),
+                &get_parameters(initial_sigma, Some(100), None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -336,7 +340,7 @@ mod tests {
             check_termination_criteria(
                 0,
                 Instant::now(),
-                &get_parameters(initial_sigma, None, Some(100), None),
+                &get_parameters(initial_sigma, None, Some(100), None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -359,7 +363,7 @@ mod tests {
             check_termination_criteria(
                 0,
                 time_started,
-                &get_parameters(initial_sigma, None, None, Some(max_time)),
+                &get_parameters(initial_sigma, None, None, Some(max_time), None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -379,7 +383,7 @@ mod tests {
         assert!(check_termination_criteria(
             0,
             Instant::now(),
-            &get_parameters(initial_sigma, None, None, None),
+            &get_parameters(initial_sigma, None, None, None, None),
             &state,
             &VecDeque::new(),
             &VecDeque::new(),
@@ -408,7 +412,7 @@ mod tests {
         assert!(check_termination_criteria(
             0,
             Instant::now(),
-            &get_parameters(initial_sigma, None, None, None),
+            &get_parameters(initial_sigma, None, None, None, None),
             &state,
             &VecDeque::new(),
             &VecDeque::new(),
@@ -428,7 +432,7 @@ mod tests {
             check_termination_criteria(
                 0,
                 Instant::now(),
-                &get_parameters(initial_sigma, None, None, None),
+                &get_parameters(initial_sigma, None, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -453,7 +457,7 @@ mod tests {
             check_termination_criteria(
                 0,
                 Instant::now(),
-                &get_parameters(initial_sigma, None, None, None),
+                &get_parameters(initial_sigma, None, None, None, Some(0.0)),
                 &state,
                 &best_function_value_history,
                 &VecDeque::new(),
@@ -461,6 +465,31 @@ mod tests {
                 &get_dummy_generation(best_function_value_history[0]),
             ),
             vec![TerminationReason::TolFun],
+        );
+    }
+
+    #[test]
+    fn test_check_termination_criteria_tol_fun_hist() {
+        // A small range of historical best values produces TolFunHist
+        let initial_sigma = None;
+        let state = get_state(initial_sigma);
+
+        let mut best_function_value_history = VecDeque::new();
+        best_function_value_history.extend(vec![1.0; 100]);
+        best_function_value_history.push_front(1.01);
+
+        assert_eq!(
+            check_termination_criteria(
+                0,
+                Instant::now(),
+                &get_parameters(initial_sigma, None, None, None, Some(0.05)),
+                &state,
+                &best_function_value_history,
+                &VecDeque::new(),
+                MAX_HISTORY_LENGTH,
+                &get_dummy_generation(1.0),
+            ),
+            vec![TerminationReason::TolFunHist],
         );
     }
 
@@ -476,7 +505,7 @@ mod tests {
             check_termination_criteria(
                 0,
                 Instant::now(),
-                &get_parameters(initial_sigma, None, None, None),
+                &get_parameters(initial_sigma, None, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -484,42 +513,6 @@ mod tests {
                 &get_dummy_generation(1.0),
             ),
             vec![TerminationReason::TolX],
-        );
-    }
-
-    #[test]
-    fn test_check_termination_criteria_equal_fun_values() {
-        // A zero range of historical best values with a non-small range of current function
-        // values produces EqualFunValues
-        let initial_sigma = None;
-        let state = get_state(initial_sigma);
-
-        let mut best_function_value_history = VecDeque::new();
-        best_function_value_history.extend(vec![1.0; 100]);
-        // Equal to 1.0 due to lack of precision
-        best_function_value_history.push_front(1.0 + 1e-17);
-
-        let mut individuals = get_dummy_generation(1.5);
-        individuals[0] = EvaluatedPoint::new(
-            DVector::zeros(DIM),
-            &DVector::zeros(DIM),
-            0.0,
-            &mut |_: &DVector<f64>| best_function_value_history[0],
-        )
-        .unwrap();
-
-        assert_eq!(
-            check_termination_criteria(
-                0,
-                Instant::now(),
-                &get_parameters(initial_sigma, None, None, None),
-                &state,
-                &best_function_value_history,
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &individuals,
-            ),
-            vec![TerminationReason::EqualFunValues],
         );
     }
 
@@ -547,7 +540,7 @@ mod tests {
             check_termination_criteria(
                 0,
                 Instant::now(),
-                &get_parameters(initial_sigma, None, None, None),
+                &get_parameters(initial_sigma, None, None, None, None),
                 &state,
                 &best_function_value_history,
                 &median_function_value_history,
@@ -570,7 +563,7 @@ mod tests {
             check_termination_criteria(
                 0,
                 Instant::now(),
-                &get_parameters(initial_sigma, None, None, None),
+                &get_parameters(initial_sigma, None, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -606,7 +599,7 @@ mod tests {
             let termination_reasons = check_termination_criteria(
                 0,
                 Instant::now(),
-                &get_parameters(initial_sigma, None, None, None),
+                &get_parameters(initial_sigma, None, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -643,7 +636,7 @@ mod tests {
             let termination_reasons = check_termination_criteria(
                 0,
                 Instant::now(),
-                &get_parameters(initial_sigma, None, None, None),
+                &get_parameters(initial_sigma, None, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -678,7 +671,7 @@ mod tests {
             check_termination_criteria(
                 0,
                 Instant::now(),
-                &get_parameters(initial_sigma, None, None, None),
+                &get_parameters(initial_sigma, None, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),

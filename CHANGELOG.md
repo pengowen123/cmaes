@@ -14,6 +14,7 @@
 - Added `tol_x_up` option to configure `TolXUp` termination criterion.
 - Renamed `ConditionCov` termination criterion to `TolConditionCov` and added `tol_condition_cov` option to configure it.
 - Added `MaxTime` termination criterion to limit the running time of the algorithm.
+- Renamed `EqualFunValues` termination criterion to `TolFunHist` and added `tol_fun_hist` option to configure its range.
 
 ## 0.1.1 (March 4th, 2022)
 

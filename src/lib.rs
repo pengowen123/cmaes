@@ -208,6 +208,7 @@ impl<'a> CMAES<'a> {
             max_time: options.max_time,
             fun_target: options.fun_target,
             tol_fun: options.tol_fun,
+            tol_fun_hist: options.tol_fun_hist,
             tol_x,
             tol_x_up: options.tol_x_up,
             tol_condition_cov: options.tol_condition_cov,

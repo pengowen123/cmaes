@@ -67,6 +67,10 @@ pub struct CMAESOptions {
     /// The value to use for the [`TerminationReason::TolFun`][crate::TerminationReason::TolFun]
     /// termination criterion. Default value is `1e-12`.
     pub tol_fun: f64,
+    /// The value to use for the
+    /// [`TerminationReason::TolFunHist`][crate::TerminationReason::TolFunHist] termination
+    /// criterion. Default value is `1e-12`.
+    pub tol_fun_hist: f64,
     /// The value to use for the [`TerminationReason::TolX`][crate::TerminationReason::TolX]
     /// termination criterion. Default value is `1e-12 * initial_step_size`, used if this field is
     /// `None`.
@@ -106,6 +110,7 @@ impl CMAESOptions {
             max_time: None,
             fun_target: 1e-12,
             tol_fun: 1e-12,
+            tol_fun_hist: 1e-12,
             tol_x: None,
             tol_x_up: 1e8,
             tol_condition_cov: 1e14,
@@ -168,6 +173,13 @@ impl CMAESOptions {
         self
     }
 
+    /// Changes the value for the `FunTarget` termination criterion from the default value (see
+    /// [`TerminationReason::FunTarget`][crate::TerminationReason::FunTarget]).
+    pub fn fun_target(mut self, fun_target: f64) -> Self {
+        self.fun_target = fun_target;
+        self
+    }
+
     /// Changes the value for the `TolFun` termination criterion from the default value (see
     /// [`TerminationReason::TolFun`][crate::TerminationReason::TolFun]).
     pub fn tol_fun(mut self, tol_fun: f64) -> Self {
@@ -175,10 +187,10 @@ impl CMAESOptions {
         self
     }
 
-    /// Changes the value for the `FunTarget` termination criterion from the default value (see
-    /// [`TerminationReason::FunTarget`][crate::TerminationReason::FunTarget]).
-    pub fn fun_target(mut self, fun_target: f64) -> Self {
-        self.fun_target = fun_target;
+    /// Changes the value for the `TolFunHist` termination criterion from the default value (see
+    /// [`TerminationReason::TolFunHist`][crate::TerminationReason::TolFunHist]).
+    pub fn tol_fun_hist(mut self, tol_fun_hist: f64) -> Self {
+        self.tol_fun_hist = tol_fun_hist;
         self
     }
 
