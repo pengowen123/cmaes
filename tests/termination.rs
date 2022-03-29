@@ -178,7 +178,7 @@ fn test_condition_cov() {
     run_test(
         function,
         CMAESOptions::new(2).initial_step_size(1e3).tol_x(1e-12),
-        |r| matches!(r, TerminationReason::ConditionCov),
+        |r| matches!(r, TerminationReason::TolConditionCov),
         1,
     );
 }

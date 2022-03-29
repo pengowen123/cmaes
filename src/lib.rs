@@ -206,6 +206,7 @@ impl<'a> CMAES<'a> {
             tol_fun: options.tol_fun,
             tol_x,
             tol_x_up: options.tol_x_up,
+            tol_condition_cov: options.tol_condition_cov,
         };
         let parameters = Parameters::new(
             options.dimensions,

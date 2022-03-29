@@ -43,8 +43,8 @@ pub enum TerminationReason {
     /// The standard deviation in any coordinate axis in the distribution is too small to perform
     /// any meaningful calculations.
     NoEffectCoord,
-    /// The condition number of the covariance matrix exceeds `10^14` or is non-normal.
-    ConditionCov,
+    /// The condition number of the covariance matrix exceeds `tol_condition_cov` or is non-normal.
+    TolConditionCov,
     /// The objective function has returned an invalid value (`NAN` or `-NAN`).
     InvalidFunctionValue,
     /// The covariance matrix is not positive definite. If this is returned frequently, it probably
@@ -82,6 +82,7 @@ pub(crate) fn check_termination_criteria(
     let tol_fun = parameters.tol_fun();
     let tol_x = parameters.tol_x();
     let tol_x_up = parameters.tol_x_up();
+    let tol_condition_cov = parameters.tol_condition_cov();
 
     let mean = state.mean();
     let cov = state.cov();
@@ -137,11 +138,11 @@ pub(crate) fn check_termination_criteria(
         result.push(TerminationReason::TolX);
     }
 
-    // Check TerminationReason::ConditionCov
+    // Check TerminationReason::TolConditionCov
     let cond = state.axis_ratio().powi(2);
 
-    if !cond.is_normal() || cond > 1e14 {
-        result.push(TerminationReason::ConditionCov);
+    if !cond.is_normal() || cond > tol_condition_cov {
+        result.push(TerminationReason::TolConditionCov);
     }
 
     // Check TerminationReason::NoEffectAxis
@@ -252,6 +253,7 @@ mod tests {
             tol_fun: 1e-12,
             tol_x: 1e-12 * initial_sigma,
             tol_x_up: 1e8,
+            tol_condition_cov: 1e14,
         };
         Parameters::new(
             DIM,
@@ -609,7 +611,7 @@ mod tests {
     #[test]
     fn test_check_termination_criteria_condition_cov() {
         // A large difference between the maximum and minimum standard deviations produces
-        // ConditionCov
+        // TolConditionCov
         let initial_sigma = None;
         let mut state = get_state(initial_sigma);
 
@@ -631,7 +633,7 @@ mod tests {
                 MAX_HISTORY_LENGTH,
                 &get_dummy_generation(1.0),
             ),
-            vec![TerminationReason::ConditionCov],
+            vec![TerminationReason::TolConditionCov],
         );
     }
 }
