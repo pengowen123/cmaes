@@ -205,6 +205,7 @@ impl<'a> CMAES<'a> {
             fun_target: options.fun_target,
             tol_fun: options.tol_fun,
             tol_x,
+            tol_x_up: options.tol_x_up,
         };
         let parameters = Parameters::new(
             options.dimensions,

@@ -33,9 +33,9 @@ pub enum TerminationReason {
     EqualFunValues,
     /// The best and median function values have not improved significantly over many generations.
     Stagnation,
-    /// The maximum standard deviation across all dimensions increased by a factor of more than
-    /// `10^8`. This is likely due to the function diverging or the initial step size being set far
-    /// too small. In the latter case a restart with a larger step size may be useful.
+    /// The maximum standard deviation across all distribution axes increased by a factor of more
+    /// than `tol_x_up`. This is likely due to the function diverging or the initial step size being
+    /// set far too small. In the latter case a restart with a larger step size may be useful.
     TolXUp,
     /// The standard deviation in any principal axis in the distribution is too small to perform any
     /// meaningful calculations.
@@ -81,6 +81,7 @@ pub(crate) fn check_termination_criteria(
     let fun_target = parameters.fun_target();
     let tol_fun = parameters.tol_fun();
     let tol_x = parameters.tol_x();
+    let tol_x_up = parameters.tol_x_up();
 
     let mean = state.mean();
     let cov = state.cov();
@@ -216,7 +217,7 @@ pub(crate) fn check_termination_criteria(
             .max_by(|a, b| utils::partial_cmp(**a, **b))
             .unwrap();
 
-    if max_standard_deviation / initial_sigma > 1e8 {
+    if max_standard_deviation / initial_sigma > tol_x_up {
         result.push(TerminationReason::TolXUp);
     }
 
@@ -250,6 +251,7 @@ mod tests {
             fun_target: 1e-12,
             tol_fun: 1e-12,
             tol_x: 1e-12 * initial_sigma,
+            tol_x_up: 1e8,
         };
         Parameters::new(
             DIM,

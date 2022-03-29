@@ -66,6 +66,9 @@ pub struct CMAESOptions {
     /// termination criterion. Default value is `1e-12 * initial_step_size`, used if this field is
     /// `None`.
     pub tol_x: Option<f64>,
+    /// The value to use for the [`TerminationReason::TolXUp`][crate::TerminationReason::TolXUp]
+    /// termination criterion. Default value is `1e+8`.
+    pub tol_x_up: f64,
     /// The seed for the RNG used in the algorithm. Can be set manually for deterministic runs. By
     /// default a random seed is used if this field is `None`.
     pub seed: Option<u64>,
@@ -94,6 +97,7 @@ impl CMAESOptions {
             fun_target: 1e-12,
             tol_fun: 1e-12,
             tol_x: None,
+            tol_x_up: 1e8,
             seed: None,
             plot_options: None,
             print_gap_evals: None,
@@ -164,6 +168,13 @@ impl CMAESOptions {
     /// [`TerminationReason::TolX`][crate::TerminationReason::TolX]).
     pub fn tol_x(mut self, tol_x: f64) -> Self {
         self.tol_x = Some(tol_x);
+        self
+    }
+
+    /// Changes the value for the `TolXUp` termination criterion from the default value (see
+    /// [`TerminationReason::TolXUp`][crate::TerminationReason::TolXUp]).
+    pub fn tol_x_up(mut self, tol_x_up: f64) -> Self {
+        self.tol_x_up = tol_x_up;
         self
     }
 

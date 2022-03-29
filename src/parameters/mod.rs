@@ -21,6 +21,8 @@ pub(crate) struct TerminationParameters {
     pub tol_fun: f64,
     /// Value for the TolX termination criterion
     pub tol_x: f64,
+    /// Value for the TolXUp termination criterion
+    pub tol_x_up: f64,
 }
 
 /// Stores constant parameters for the algorithm. Obtained by calling
@@ -200,6 +202,12 @@ impl Parameters {
     /// termination criterion.
     pub fn tol_x(&self) -> f64 {
         self.termination.tol_x
+    }
+
+    /// Returns the value for the [`TerminationReason::TolXUp`][crate::TerminationReason::TolXUp]
+    /// termination criterion.
+    pub fn tol_x_up(&self) -> f64 {
+        self.termination.tol_x_up
     }
 
     /// Returns the seed for the RNG.
