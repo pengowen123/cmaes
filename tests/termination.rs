@@ -3,6 +3,9 @@
 use cmaes::{CMAESOptions, ObjectiveFunction, TerminationReason};
 use nalgebra::DVector;
 
+use std::thread;
+use std::time::Duration;
+
 // Number of times to repeat each test
 // Necessary to account for the inherent randomness of the algorithm
 const TEST_REPETITIONS: usize = 100;
@@ -58,6 +61,24 @@ fn test_max_generations() {
             .initial_mean(vec![5.0; 2])
             .max_generations(20),
         |r| matches!(r, TerminationReason::MaxGenerations),
+        0,
+    );
+}
+
+#[test]
+fn test_max_time() {
+    // `max_time` is reached more quickly than the algorithm converges
+    let function = |x: &DVector<f64>| {
+        thread::sleep(Duration::from_millis(1));
+        x.magnitude().powi(2)
+    };
+    let dim = 2;
+    run_test(
+        function,
+        CMAESOptions::new(dim)
+            .initial_mean(vec![5.0; dim])
+            .max_time(Duration::from_millis(1)),
+        |r| matches!(r, TerminationReason::MaxTime),
         0,
     );
 }

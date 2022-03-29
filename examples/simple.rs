@@ -7,6 +7,7 @@ use cmaes::{CMAESOptions, DVector, PlotOptions, Weights};
 use rand;
 
 use std::f64::consts::PI;
+use std::time::Duration;
 
 fn main() {
     let function = rosenbrock;
@@ -22,11 +23,12 @@ fn main() {
         .tol_x(1e-13)
         .initial_step_size(0.1)
         .initial_mean(vec![0.1; dim])
+        .max_generations(10_000)
+        .max_function_evals(100_000)
+        .max_time(Duration::from_secs(5))
         // Enable recording the plot and printing info
         .enable_plot(PlotOptions::new(0, false))
         .enable_printing(200)
-        .max_generations(10_000)
-        .max_function_evals(100_000)
         .build(function.clone())
         .unwrap();
 

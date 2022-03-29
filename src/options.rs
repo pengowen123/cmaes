@@ -2,6 +2,8 @@
 
 use nalgebra::DVector;
 
+use std::time::Duration;
+
 use crate::parameters::Weights;
 use crate::{ObjectiveFunction, PlotOptions, CMAES};
 
@@ -55,6 +57,9 @@ pub struct CMAESOptions {
     /// [`TerminationReason::MaxGenerations`][crate::TerminationReason::MaxGenerations]
     /// termination criterion. Default value is `None`.
     pub max_generations: Option<usize>,
+    /// The value to use for the [`TerminationReason::MaxTime`][crate::TerminationReason::MaxTime]
+    /// termination criterion. Default value is `None`.
+    pub max_time: Option<Duration>,
     /// The value to use for the
     /// [`TerminationReason::FunTarget`][crate::TerminationReason::FunTarget] termination criterion.
     /// Default value is `1e-12`.
@@ -98,6 +103,7 @@ impl CMAESOptions {
             cm: 1.0,
             max_function_evals: None,
             max_generations: None,
+            max_time: None,
             fun_target: 1e-12,
             tol_fun: 1e-12,
             tol_x: None,
@@ -152,6 +158,13 @@ impl CMAESOptions {
     /// (see [`TerminationReason::MaxGenerations`][crate::TerminationReason::MaxGenerations]).
     pub fn max_generations(mut self, max_generations: usize) -> Self {
         self.max_generations = Some(max_generations);
+        self
+    }
+
+    /// Changes the value for the `MaxTime` termination criterion from the default value
+    /// (see [`TerminationReason::MaxTime`][crate::TerminationReason::MaxTime]).
+    pub fn max_time(mut self, max_time: Duration) -> Self {
+        self.max_time = Some(max_time);
         self
     }
 

@@ -4,6 +4,8 @@ mod weights;
 
 use nalgebra::DVector;
 
+use std::time::Duration;
+
 pub use weights::Weights;
 
 use weights::{FinalWeights, InitialWeights};
@@ -15,6 +17,8 @@ pub(crate) struct TerminationParameters {
     pub max_function_evals: Option<usize>,
     /// Value for the MaxGenerations termination criterion
     pub max_generations: Option<usize>,
+    /// Value for the MaxTime termination criterion
+    pub max_time: Option<Duration>,
     /// Value for the FunTarget termination criterion
     pub fun_target: f64,
     /// Value for the TolFun termination criterion
@@ -186,6 +190,12 @@ impl Parameters {
     /// termination criterion.
     pub fn max_generations(&self) -> Option<usize> {
         self.termination.max_generations
+    }
+
+    /// Returns the value for the [`TerminationReason::MaxTime`][crate::TerminationReason::MaxTime]
+    /// termination criterion.
+    pub fn max_time(&self) -> Option<Duration> {
+        self.termination.max_time
     }
 
     /// Returns the value for the

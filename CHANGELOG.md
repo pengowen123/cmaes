@@ -13,6 +13,7 @@
 - Added `FunTarget` termination criterion that checks whether a function value threshold has been reached.
 - Added `tol_x_up` option to configure `TolXUp` termination criterion.
 - Renamed `ConditionCov` termination criterion to `TolConditionCov` and added `tol_condition_cov` option to configure it.
+- Added `MaxTime` termination criterion to limit the running time of the algorithm.
 
 ## 0.1.1 (March 4th, 2022)
 

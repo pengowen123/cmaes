@@ -68,6 +68,7 @@ pub use crate::termination::TerminationReason;
 
 use std::collections::VecDeque;
 use std::f64;
+use std::time::{Duration, Instant};
 
 use crate::matrix::SquareMatrix;
 use crate::options::InvalidOptionsError;
@@ -158,6 +159,8 @@ pub struct CMAES<'a> {
     print_gap_evals: Option<usize>,
     /// The last time [`CMAES::print_info`] was called, in function evaluations
     last_print_evals: usize,
+    /// The time at which the `CMAES` was created
+    time_created: Instant,
 }
 
 impl<'a> CMAES<'a> {
@@ -202,6 +205,7 @@ impl<'a> CMAES<'a> {
         let termination_parameters = TerminationParameters {
             max_function_evals: options.max_function_evals,
             max_generations: options.max_generations,
+            max_time: options.max_time,
             fun_target: options.fun_target,
             tol_fun: options.tol_fun,
             tol_x,
@@ -237,6 +241,7 @@ impl<'a> CMAES<'a> {
             plot,
             print_gap_evals: options.print_gap_evals,
             last_print_evals: 0,
+            time_created: Instant::now(),
         };
 
         // Plot initial state
@@ -368,6 +373,7 @@ impl<'a> CMAES<'a> {
         // Terminate with the current best individual if any termination criteria are met
         let termination_reasons = termination::check_termination_criteria(
             self.sampler.function_evals(),
+            self.time_created,
             &self.parameters,
             &self.state,
             &self.best_function_value_history,
@@ -455,6 +461,16 @@ impl<'a> CMAES<'a> {
     /// `Some` as long as [`next`][Self::next] has been called at least once.
     pub fn overall_best_individual(&self) -> Option<&Individual> {
         self.overall_best_individual.as_ref()
+    }
+
+    /// Returns the time at which the `CMAES` was created.
+    pub fn time_created(&self) -> Instant {
+        self.time_created
+    }
+
+    /// Returns the time elapsed since the `CMAES` was created.
+    pub fn elapsed(&self) -> Duration {
+        self.time_created.elapsed()
     }
 
     /// Returns a reference to the data plot if enabled.

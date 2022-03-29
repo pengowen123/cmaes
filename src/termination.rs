@@ -4,6 +4,7 @@ use statrs::statistics::{Data, Median};
 
 use std::collections::VecDeque;
 use std::fmt::{self, Debug};
+use std::time::Instant;
 
 use crate::parameters::Parameters;
 use crate::sampling::EvaluatedPoint;
@@ -19,6 +20,8 @@ pub enum TerminationReason {
     MaxFunctionEvals,
     /// The maximum number of generations has been reached.
     MaxGenerations,
+    /// The algorithm has been running for longer than the time limit.
+    MaxTime,
     /// The target objective function value has been reached.
     FunTarget,
     /// The range of function values of the latest generation and the range of the best function
@@ -64,8 +67,10 @@ impl fmt::Display for TerminationReason {
 
 /// Checks the state, objective function value history, and current generation, and returns
 /// a list of any termination criteria that are met
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn check_termination_criteria(
     current_function_evals: usize,
+    time_created: Instant,
     parameters: &Parameters,
     state: &State,
     best_function_value_history: &VecDeque<f64>,
@@ -102,6 +107,13 @@ pub(crate) fn check_termination_criteria(
     if let Some(max_generations) = parameters.max_generations() {
         if state.generation() >= max_generations {
             result.push(TerminationReason::MaxGenerations);
+        }
+    }
+
+    // Check TerminationReason::MaxTime
+    if let Some(max_time) = parameters.max_time() {
+        if time_created.elapsed() >= max_time {
+            result.push(TerminationReason::MaxTime);
         }
     }
 
@@ -229,6 +241,8 @@ pub(crate) fn check_termination_criteria(
 mod tests {
     use nalgebra::DVector;
 
+    use std::time::Duration;
+
     use super::*;
     use crate::matrix::SquareMatrix;
     use crate::parameters::{TerminationParameters, Weights};
@@ -242,6 +256,7 @@ mod tests {
         initial_sigma: Option<f64>,
         max_function_evals: Option<usize>,
         max_generations: Option<usize>,
+        max_time: Option<Duration>,
     ) -> Parameters {
         let initial_sigma = initial_sigma.unwrap_or(DEFAULT_INITIAL_SIGMA);
         let lambda = 6;
@@ -249,6 +264,7 @@ mod tests {
         let termination_parameters = TerminationParameters {
             max_function_evals: max_function_evals,
             max_generations: max_generations,
+            max_time,
             fun_target: 1e-12,
             tol_fun: 1e-12,
             tol_x: 1e-12 * initial_sigma,
@@ -297,7 +313,8 @@ mod tests {
         assert_eq!(
             check_termination_criteria(
                 current_function_evals,
-                &get_parameters(initial_sigma, Some(100), None),
+                Instant::now(),
+                &get_parameters(initial_sigma, Some(100), None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -318,7 +335,8 @@ mod tests {
         assert_eq!(
             check_termination_criteria(
                 0,
-                &get_parameters(initial_sigma, None, Some(100)),
+                Instant::now(),
+                &get_parameters(initial_sigma, None, Some(100), None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -330,6 +348,29 @@ mod tests {
     }
 
     #[test]
+    fn test_check_termination_criteria_max_time() {
+        let initial_sigma = None;
+        let state = get_state(initial_sigma);
+
+        let max_time = Duration::from_secs(4);
+        let time_started = Instant::now() - Duration::from_secs(5);
+
+        assert_eq!(
+            check_termination_criteria(
+                0,
+                time_started,
+                &get_parameters(initial_sigma, None, None, Some(max_time)),
+                &state,
+                &VecDeque::new(),
+                &VecDeque::new(),
+                MAX_HISTORY_LENGTH,
+                &get_dummy_generation(1.0),
+            ),
+            vec![TerminationReason::MaxTime],
+        );
+    }
+
+    #[test]
     fn test_check_termination_criteria_none() {
         // A fresh state should not meet any termination criteria
         let initial_sigma = None;
@@ -337,7 +378,8 @@ mod tests {
 
         assert!(check_termination_criteria(
             0,
-            &get_parameters(initial_sigma, None, None),
+            Instant::now(),
+            &get_parameters(initial_sigma, None, None, None),
             &state,
             &VecDeque::new(),
             &VecDeque::new(),
@@ -365,7 +407,8 @@ mod tests {
 
         assert!(check_termination_criteria(
             0,
-            &get_parameters(initial_sigma, None, None),
+            Instant::now(),
+            &get_parameters(initial_sigma, None, None, None),
             &state,
             &VecDeque::new(),
             &VecDeque::new(),
@@ -384,7 +427,8 @@ mod tests {
         assert_eq!(
             check_termination_criteria(
                 0,
-                &get_parameters(initial_sigma, None, None),
+                Instant::now(),
+                &get_parameters(initial_sigma, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -408,7 +452,8 @@ mod tests {
         assert_eq!(
             check_termination_criteria(
                 0,
-                &get_parameters(initial_sigma, None, None),
+                Instant::now(),
+                &get_parameters(initial_sigma, None, None, None),
                 &state,
                 &best_function_value_history,
                 &VecDeque::new(),
@@ -430,7 +475,8 @@ mod tests {
         assert_eq!(
             check_termination_criteria(
                 0,
-                &get_parameters(initial_sigma, None, None),
+                Instant::now(),
+                &get_parameters(initial_sigma, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -465,7 +511,8 @@ mod tests {
         assert_eq!(
             check_termination_criteria(
                 0,
-                &get_parameters(initial_sigma, None, None),
+                Instant::now(),
+                &get_parameters(initial_sigma, None, None, None),
                 &state,
                 &best_function_value_history,
                 &VecDeque::new(),
@@ -499,7 +546,8 @@ mod tests {
         assert_eq!(
             check_termination_criteria(
                 0,
-                &get_parameters(initial_sigma, None, None),
+                Instant::now(),
+                &get_parameters(initial_sigma, None, None, None),
                 &state,
                 &best_function_value_history,
                 &median_function_value_history,
@@ -521,7 +569,8 @@ mod tests {
         assert_eq!(
             check_termination_criteria(
                 0,
-                &get_parameters(initial_sigma, None, None),
+                Instant::now(),
+                &get_parameters(initial_sigma, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -556,7 +605,8 @@ mod tests {
 
             let termination_reasons = check_termination_criteria(
                 0,
-                &get_parameters(initial_sigma, None, None),
+                Instant::now(),
+                &get_parameters(initial_sigma, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -592,7 +642,8 @@ mod tests {
 
             let termination_reasons = check_termination_criteria(
                 0,
-                &get_parameters(initial_sigma, None, None),
+                Instant::now(),
+                &get_parameters(initial_sigma, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
@@ -626,7 +677,8 @@ mod tests {
         assert_eq!(
             check_termination_criteria(
                 0,
-                &get_parameters(initial_sigma, None, None),
+                Instant::now(),
+                &get_parameters(initial_sigma, None, None, None),
                 &state,
                 &VecDeque::new(),
                 &VecDeque::new(),
