@@ -108,6 +108,19 @@ fn test_tol_fun() {
 }
 
 #[test]
+fn test_tol_fun_rel() {
+    // The function reaches `tol_fun_rel` more quickly than `tol_fun` due to the large improvement
+    // in function value
+    let function = |x: &DVector<f64>| 1.0 + x.magnitude().powi(2);
+    run_test(
+        function,
+        CMAESOptions::new(2).tol_fun_rel(1e-12).initial_mean(vec![1e6; 2]),
+        |r| matches!(r, TerminationReason::TolFunRel),
+        0,
+    );
+}
+
+#[test]
 fn test_tol_x() {
     // The algorithm converges more quickly than `tol_fun is reached`
     let function = |x: &DVector<f64>| x.magnitude().sqrt();

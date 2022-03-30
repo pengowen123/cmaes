@@ -76,6 +76,7 @@ use crate::parameters::{Parameters, TerminationParameters};
 use crate::plotting::Plot;
 use crate::sampling::{EvaluatedPoint, InvalidFunctionValueError, Sampler};
 use crate::state::State;
+use crate::termination::TerminationCheck;
 
 /// An individual point with its corresponding objective function value.
 #[derive(Clone, Debug)]
@@ -152,6 +153,10 @@ pub struct CMAES<'a> {
     current_best_individual: Option<Individual>,
     /// The best individual of any generation
     overall_best_individual: Option<Individual>,
+    /// The median objective function value of the first generation
+    first_median_value: Option<f64>,
+    /// The best median objective function value of any generation
+    best_median_value: Option<f64>,
     /// Data plot if enabled
     plot: Option<Plot>,
     /// The minimum number of function evaluations to wait for in between each automatic
@@ -208,6 +213,7 @@ impl<'a> CMAES<'a> {
             max_time: options.max_time,
             fun_target: options.fun_target,
             tol_fun: options.tol_fun,
+            tol_fun_rel: options.tol_fun_rel,
             tol_fun_hist: options.tol_fun_hist,
             tol_x,
             tol_x_up: options.tol_x_up,
@@ -239,6 +245,8 @@ impl<'a> CMAES<'a> {
             median_function_value_history: VecDeque::new(),
             current_best_individual: None,
             overall_best_individual: None,
+            first_median_value: None,
+            best_median_value: None,
             plot,
             print_gap_evals: options.print_gap_evals,
             last_print_evals: 0,
@@ -303,6 +311,13 @@ impl<'a> CMAES<'a> {
             self.median_function_value_history.pop_back();
         }
 
+        self.first_median_value = self.first_median_value.or(Some(median.value()));
+
+        match self.best_median_value {
+            Some(ref mut value) => *value = value.min(median.value()),
+            None => self.best_median_value = Some(median.value()),
+        }
+
         self.update_best_individuals(Individual::new(best.point().clone(), best.value()));
 
         Ok(individuals)
@@ -319,7 +334,7 @@ impl<'a> CMAES<'a> {
         let lambda = self.parameters.lambda();
 
         // How many generations to store in self.best_function_value_history and
-        // self.median_function_value
+        // self.median_function_value_history
         // This is the largest history size required by any termination criterion
         let max_history_size = ((0.2 * self.state.generation() as f64).ceil() as usize)
             .max(120 + (30.0 * dim as f64 / lambda as f64).ceil() as usize)
@@ -372,16 +387,18 @@ impl<'a> CMAES<'a> {
         }
 
         // Terminate with the current best individual if any termination criteria are met
-        let termination_reasons = termination::check_termination_criteria(
-            self.sampler.function_evals(),
-            self.time_created,
-            &self.parameters,
-            &self.state,
-            &self.best_function_value_history,
-            &self.median_function_value_history,
+        let termination_reasons = TerminationCheck {
+            current_function_evals: self.sampler.function_evals(),
+            time_created: self.time_created,
+            parameters: &self.parameters,
+            state: &self.state,
+            best_function_value_history: &self.best_function_value_history,
+            median_function_value_history: &self.median_function_value_history,
+            first_median_value: self.first_median_value,
+            best_median_value: self.best_median_value,
             max_history_size,
-            &individuals,
-        );
+            individuals: &individuals,
+        }.check_termination_criteria();
 
         if !termination_reasons.is_empty() {
             Some(self.get_termination_data(termination_reasons))
@@ -631,6 +648,13 @@ mod tests {
         let mut cmaes = CMAESOptions::new(dim).build(dummy_function).unwrap();
         let origin = DVector::from(vec![0.0; dim]);
 
+        assert!(cmaes.current_best_individual().is_none());
+        assert!(cmaes.overall_best_individual().is_none());
+
+        cmaes.update_best_individuals(Individual::new(origin.clone(), 7.0));
+        assert_eq!(cmaes.current_best_individual().unwrap().value, 7.0);
+        assert_eq!(cmaes.overall_best_individual().unwrap().value, 7.0);
+
         cmaes.update_best_individuals(Individual::new(origin.clone(), 1.0));
         assert_eq!(cmaes.current_best_individual().unwrap().value, 1.0);
         assert_eq!(cmaes.overall_best_individual().unwrap().value, 1.0);
@@ -646,6 +670,55 @@ mod tests {
         cmaes.update_best_individuals(Individual::new(origin.clone(), 0.5));
         assert_eq!(cmaes.current_best_individual().unwrap().value, 0.5);
         assert_eq!(cmaes.overall_best_individual().unwrap().value, 0.5);
+    }
+
+    #[test]
+    fn test_median_value_decreasing() {
+        let mut counter = 0.0;
+        let function = |_: &DVector<f64>| {
+            counter -= 1.0;
+            counter
+        };
+        let mut cmaes = CMAESOptions::new(2).build(function).unwrap();
+
+        assert!(cmaes.first_median_value.is_none());
+        assert!(cmaes.best_median_value.is_none());
+
+        let _ = cmaes.next();
+
+        // For the first generation both values are equal
+        let first = cmaes.first_median_value.unwrap();
+        let best = cmaes.best_median_value.unwrap();
+
+        assert_eq!(first, best);
+
+        let _ = cmaes.next();
+
+        // For subsequent generations only the best value improves
+        assert_eq!(first, cmaes.first_median_value.unwrap());
+        assert!(best > cmaes.best_median_value.unwrap());
+    }
+
+    #[test]
+    fn test_median_value_increasing() {
+        let mut counter = 0.0;
+        let function = |_: &DVector<f64>| {
+            counter += 1.0;
+            counter
+        };
+        let mut cmaes = CMAESOptions::new(2).build(function).unwrap();
+
+        let _ = cmaes.next();
+
+        // For the first generation both values are equal
+        let first = cmaes.first_median_value.unwrap();
+        let best = cmaes.best_median_value.unwrap();
+
+        let _ = cmaes.next();
+
+        // For subsequent generations neither value changes because the median is increasing
+        assert_eq!(first, cmaes.first_median_value.unwrap());
+        assert_eq!(best, cmaes.best_median_value.unwrap());
     }
 
     #[test]

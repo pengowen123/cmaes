@@ -68,6 +68,10 @@ pub struct CMAESOptions {
     /// termination criterion. Default value is `1e-12`.
     pub tol_fun: f64,
     /// The value to use for the
+    /// [`TerminationReason::TolFunRel`][crate::TerminationReason::TolFunRel] termination criterion.
+    /// Default value is `0` (disabled).
+    pub tol_fun_rel: f64,
+    /// The value to use for the
     /// [`TerminationReason::TolFunHist`][crate::TerminationReason::TolFunHist] termination
     /// criterion. Default value is `1e-12`.
     pub tol_fun_hist: f64,
@@ -110,6 +114,7 @@ impl CMAESOptions {
             max_time: None,
             fun_target: 1e-12,
             tol_fun: 1e-12,
+            tol_fun_rel: 0.0,
             tol_fun_hist: 1e-12,
             tol_x: None,
             tol_x_up: 1e8,
@@ -184,6 +189,13 @@ impl CMAESOptions {
     /// [`TerminationReason::TolFun`][crate::TerminationReason::TolFun]).
     pub fn tol_fun(mut self, tol_fun: f64) -> Self {
         self.tol_fun = tol_fun;
+        self
+    }
+
+    /// Changes the value for the `TolFunRel` termination criterion from the default value (see
+    /// [`TerminationReason::TolFunRel`][crate::TerminationReason::TolFunRel]).
+    pub fn tol_fun_rel(mut self, tol_fun_rel: f64) -> Self {
+        self.tol_fun_rel = tol_fun_rel;
         self
     }
 

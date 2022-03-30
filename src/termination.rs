@@ -29,6 +29,9 @@ pub enum TerminationReason {
     /// value has stopped changing significantly and that the function value spread of each
     /// generation is equally insignificant.
     TolFun,
+    /// Like `TolFun`, but the range is `tol_fun_rel * (first_median - current_median)` (i.e. it is
+    /// relative to the overall improvement in the median objective function value).
+    TolFunRel,
     /// The range of best function values in many consecutive generations is lower than
     /// `tol_fun_hist` (i.e. little to no improvement or change is occurring).
     TolFunHist,
@@ -66,177 +69,198 @@ impl fmt::Display for TerminationReason {
     }
 }
 
-/// Checks the state, objective function value history, and current generation, and returns
-/// a list of any termination criteria that are met
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn check_termination_criteria(
-    current_function_evals: usize,
-    time_created: Instant,
-    parameters: &Parameters,
-    state: &State,
-    best_function_value_history: &VecDeque<f64>,
-    median_function_value_history: &VecDeque<f64>,
-    max_history_size: usize,
-    individuals: &[EvaluatedPoint],
-) -> Vec<TerminationReason> {
-    let mut result = Vec::new();
+/// Stores parameters of the termination check
+pub(crate) struct TerminationCheck<'a> {
+    pub current_function_evals: usize,
+    /// The time at which the `CMAES` was created
+    pub time_created: Instant,
+    pub parameters: &'a Parameters,
+    pub state: &'a State,
+    pub best_function_value_history: &'a VecDeque<f64>,
+    pub median_function_value_history: &'a VecDeque<f64>,
+    pub max_history_size: usize,
+    /// The median objective function value of the first generation
+    pub first_median_value: Option<f64>,
+    /// The best median objective function value of any generation
+    pub best_median_value: Option<f64>,
+    /// The current generation of individuals
+    pub individuals: &'a [EvaluatedPoint],
+}
 
-    let dim = parameters.dim();
-    let lambda = parameters.lambda();
-    let initial_sigma = parameters.initial_sigma();
-    let fun_target = parameters.fun_target();
-    let tol_fun = parameters.tol_fun();
-    let tol_fun_hist = parameters.tol_fun_hist();
-    let tol_x = parameters.tol_x();
-    let tol_x_up = parameters.tol_x_up();
-    let tol_condition_cov = parameters.tol_condition_cov();
+impl<'a> TerminationCheck<'a> {
+    /// Checks whether any termination criteria are met based on the stored parameters
+    pub(crate) fn check_termination_criteria(self) -> Vec<TerminationReason> {
+        let mut result = Vec::new();
 
-    let mean = state.mean();
-    let cov = state.cov();
-    let cov_eigenvectors = state.cov_eigenvectors();
-    let cov_sqrt_eigenvalues = state.cov_sqrt_eigenvalues();
-    let sigma = state.sigma();
-    let path_c = state.path_c();
+        let dim = self.parameters.dim();
+        let lambda = self.parameters.lambda();
+        let initial_sigma = self.parameters.initial_sigma();
+        let fun_target = self.parameters.fun_target();
+        let tol_fun = self.parameters.tol_fun();
+        let tol_fun_rel_option = self.parameters.tol_fun_rel();
+        let tol_fun_hist = self.parameters.tol_fun_hist();
+        let tol_x = self.parameters.tol_x();
+        let tol_x_up = self.parameters.tol_x_up();
+        let tol_condition_cov = self.parameters.tol_condition_cov();
 
-    // Check TerminationReason::MaxFunctionEvals
-    if let Some(max_function_evals) = parameters.max_function_evals() {
-        if current_function_evals >= max_function_evals {
-            result.push(TerminationReason::MaxFunctionEvals);
+        let mean = self.state.mean();
+        let cov = self.state.cov();
+        let cov_eigenvectors = self.state.cov_eigenvectors();
+        let cov_sqrt_eigenvalues = self.state.cov_sqrt_eigenvalues();
+        let sigma = self.state.sigma();
+        let path_c = self.state.path_c();
+
+        // Check TerminationReason::MaxFunctionEvals
+        if let Some(max_function_evals) = self.parameters.max_function_evals() {
+            if self.current_function_evals >= max_function_evals {
+                result.push(TerminationReason::MaxFunctionEvals);
+            }
         }
-    }
 
-    // Check TerminationReason::MaxGenerations
-    if let Some(max_generations) = parameters.max_generations() {
-        if state.generation() >= max_generations {
-            result.push(TerminationReason::MaxGenerations);
+        // Check TerminationReason::MaxGenerations
+        if let Some(max_generations) = self.parameters.max_generations() {
+            if self.state.generation() >= max_generations {
+                result.push(TerminationReason::MaxGenerations);
+            }
         }
-    }
 
-    // Check TerminationReason::MaxTime
-    if let Some(max_time) = parameters.max_time() {
-        if time_created.elapsed() >= max_time {
-            result.push(TerminationReason::MaxTime);
+        // Check TerminationReason::MaxTime
+        if let Some(max_time) = self.parameters.max_time() {
+            if self.time_created.elapsed() >= max_time {
+                result.push(TerminationReason::MaxTime);
+            }
         }
-    }
 
-    // Check TerminationReason::FunTarget
-    if individuals.iter().any(|ind| ind.value() <= fun_target) {
-        result.push(TerminationReason::FunTarget);
-    }
-
-    // Check TerminationReason::TolFun
-    let past_generations_a = 10 + (30.0 * dim as f64 / lambda as f64).ceil() as usize;
-    let mut range_past_generations_a = None;
-
-    if best_function_value_history.len() >= past_generations_a {
-        let range_history = utils::range(
-            best_function_value_history
-                .iter()
-                .take(past_generations_a)
-                .cloned(),
-        )
-        .unwrap();
-        range_past_generations_a = Some(range_history);
-
-        let range_current = utils::range(individuals.iter().map(|p| p.value())).unwrap();
-
-        if range_history < tol_fun && range_current < tol_fun {
-            result.push(TerminationReason::TolFun);
+        // Check TerminationReason::FunTarget
+        if self.individuals.iter().any(|ind| ind.value() <= fun_target) {
+            result.push(TerminationReason::FunTarget);
         }
-    }
 
-    // Check TerminationReason::TolX
-    if (0..dim).all(|i| (sigma * cov[(i, i)]).abs() < tol_x)
-        && path_c.iter().all(|x| (sigma * *x).abs() < tol_x)
-    {
-        result.push(TerminationReason::TolX);
-    }
+        // Check TerminationReason::TolFun and TerminationReason::TolFunRel
+        let past_generations_a = 10 + (30.0 * dim as f64 / lambda as f64).ceil() as usize;
+        let mut range_past_generations_a = None;
 
-    // Check TerminationReason::TolConditionCov
-    let cond = state.axis_ratio().powi(2);
-
-    if !cond.is_normal() || cond > tol_condition_cov {
-        result.push(TerminationReason::TolConditionCov);
-    }
-
-    // Check TerminationReason::NoEffectAxis
-    // Cycles from 0 to n-1 to avoid checking every column every iteration
-    let index_to_check = state.generation() % dim;
-
-    let no_effect_axis_check = 0.1
-        * sigma
-        * cov_sqrt_eigenvalues[(index_to_check, index_to_check)]
-        * cov_eigenvectors.column(index_to_check);
-
-    if mean == &(mean + no_effect_axis_check) {
-        result.push(TerminationReason::NoEffectAxis);
-    }
-
-    // Check TerminationReason::NoEffectCoord
-    if (0..dim).any(|i| mean[i] == mean[i] + 0.2 * sigma * cov[(i, i)]) {
-        result.push(TerminationReason::NoEffectCoord);
-    }
-
-    // Check TerminationReason::TolFunHist
-    if let Some(range) = range_past_generations_a {
-        if range < tol_fun_hist {
-            result.push(TerminationReason::TolFunHist);
-        }
-    }
-
-    // Check TerminationReason::Stagnation
-    let past_generations_b = max_history_size;
-
-    if best_function_value_history.len() >= past_generations_b
-        && median_function_value_history.len() >= past_generations_b
-    {
-        // Checks whether the median of the values has improved over the past
-        // `past_generations_b` generations
-        // Returns false if the values either did not improve significantly or became worse
-        let did_values_improve = |values: &VecDeque<f64>| {
-            let subrange_length = (past_generations_b as f64 * 0.3) as usize;
-
-            // Most recent `subrange_length `values within the past `past_generations_b`
-            // generations
-            let first_values = values
-                .iter()
-                .take(past_generations_b)
-                .take(subrange_length)
-                .cloned()
-                .collect::<Vec<_>>();
-
-            // Least recent `subrange_length` values within the past `past_generations_b`
-            // generations
-            let last_values = values
-                .iter()
-                .take(past_generations_b)
-                .skip(past_generations_b - subrange_length)
-                .cloned()
-                .collect::<Vec<_>>();
-
-            Data::new(first_values).median() < Data::new(last_values).median()
-        };
-
-        if !did_values_improve(best_function_value_history)
-            && !did_values_improve(median_function_value_history)
-        {
-            result.push(TerminationReason::Stagnation);
-        }
-    }
-
-    // Check TerminationReason::TolXUp
-    let max_standard_deviation = sigma
-        * cov_sqrt_eigenvalues
-            .diagonal()
-            .iter()
-            .max_by(|a, b| utils::partial_cmp(**a, **b))
+        if self.best_function_value_history.len() >= past_generations_a {
+            let range_history = utils::range(
+                self.best_function_value_history
+                    .iter()
+                    .take(past_generations_a)
+                    .cloned(),
+            )
             .unwrap();
+            range_past_generations_a = Some(range_history);
 
-    if max_standard_deviation / initial_sigma > tol_x_up {
-        result.push(TerminationReason::TolXUp);
+            let range_current = utils::range(self.individuals.iter().map(|p| p.value())).unwrap();
+
+            if range_history < tol_fun && range_current < tol_fun {
+                result.push(TerminationReason::TolFun);
+            }
+
+            if let (Some(first_median_value), Some(best_median_value))
+                = (self.first_median_value, self.best_median_value)
+            {
+                let tol_fun_rel_range
+                    = tol_fun_rel_option * (first_median_value - best_median_value).abs();
+
+                if range_history < tol_fun_rel_range && range_current < tol_fun_rel_range {
+                    result.push(TerminationReason::TolFunRel);
+                }
+            }
+        }
+
+        // Check TerminationReason::TolX
+        if (0..dim).all(|i| (sigma * cov[(i, i)]).abs() < tol_x)
+            && path_c.iter().all(|x| (sigma * *x).abs() < tol_x)
+        {
+            result.push(TerminationReason::TolX);
+        }
+
+        // Check TerminationReason::TolConditionCov
+        let cond = self.state.axis_ratio().powi(2);
+
+        if !cond.is_normal() || cond > tol_condition_cov {
+            result.push(TerminationReason::TolConditionCov);
+        }
+
+        // Check TerminationReason::NoEffectAxis
+        // Cycles from 0 to n-1 to avoid checking every column every iteration
+        let index_to_check = self.state.generation() % dim;
+
+        let no_effect_axis_check = 0.1
+            * sigma
+            * cov_sqrt_eigenvalues[(index_to_check, index_to_check)]
+            * cov_eigenvectors.column(index_to_check);
+
+        if mean == &(mean + no_effect_axis_check) {
+            result.push(TerminationReason::NoEffectAxis);
+        }
+
+        // Check TerminationReason::NoEffectCoord
+        if (0..dim).any(|i| mean[i] == mean[i] + 0.2 * sigma * cov[(i, i)]) {
+            result.push(TerminationReason::NoEffectCoord);
+        }
+
+        // Check TerminationReason::TolFunHist
+        if let Some(range) = range_past_generations_a {
+            if range < tol_fun_hist {
+                result.push(TerminationReason::TolFunHist);
+            }
+        }
+
+        // Check TerminationReason::Stagnation
+        let past_generations_b = self.max_history_size;
+
+        if self.best_function_value_history.len() >= past_generations_b
+            && self.median_function_value_history.len() >= past_generations_b
+        {
+            // Checks whether the median of the values has improved over the past
+            // `past_generations_b` generations
+            // Returns false if the values either did not improve significantly or became worse
+            let did_values_improve = |values: &VecDeque<f64>| {
+                let subrange_length = (past_generations_b as f64 * 0.3) as usize;
+
+                // Most recent `subrange_length `values within the past `past_generations_b`
+                // generations
+                let first_values = values
+                    .iter()
+                    .take(past_generations_b)
+                    .take(subrange_length)
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                // Least recent `subrange_length` values within the past `past_generations_b`
+                // generations
+                let last_values = values
+                    .iter()
+                    .take(past_generations_b)
+                    .skip(past_generations_b - subrange_length)
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                Data::new(first_values).median() < Data::new(last_values).median()
+            };
+
+            if !did_values_improve(self.best_function_value_history)
+                && !did_values_improve(self.median_function_value_history)
+            {
+                result.push(TerminationReason::Stagnation);
+            }
+        }
+
+        // Check TerminationReason::TolXUp
+        let max_standard_deviation = sigma
+            * cov_sqrt_eigenvalues
+                .diagonal()
+                .iter()
+                .max_by(|a, b| utils::partial_cmp(**a, **b))
+                .unwrap();
+
+        if max_standard_deviation / initial_sigma > tol_x_up {
+            result.push(TerminationReason::TolXUp);
+        }
+
+        result
     }
-
-    result
 }
 
 #[cfg(test)]
@@ -270,6 +294,7 @@ mod tests {
             max_time,
             fun_target: 1e-12,
             tol_fun: 1e-12,
+            tol_fun_rel: 1e-12,
             tol_fun_hist: tol_fun_hist.unwrap_or(1e-12),
             tol_x: 1e-12 * initial_sigma,
             tol_x_up: 1e8,
@@ -315,16 +340,18 @@ mod tests {
         let current_function_evals = 100;
 
         assert_eq!(
-            check_termination_criteria(
+            TerminationCheck {
                 current_function_evals,
-                Instant::now(),
-                &get_parameters(initial_sigma, Some(100), None, None, None),
-                &state,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(1.0),
-            ),
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, Some(100), None, None, None),
+                state: &state,
+                best_function_value_history: &VecDeque::new(),
+                median_function_value_history: &VecDeque::new(),
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(1.0),
+            }.check_termination_criteria(),
             vec![TerminationReason::MaxFunctionEvals],
         );
     }
@@ -337,16 +364,18 @@ mod tests {
         *state.mut_generation() = 100;
 
         assert_eq!(
-            check_termination_criteria(
-                0,
-                Instant::now(),
-                &get_parameters(initial_sigma, None, Some(100), None, None),
-                &state,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(1.0),
-            ),
+            TerminationCheck {
+                current_function_evals: 0,
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, None, Some(100), None, None),
+                state: &state,
+                best_function_value_history: &VecDeque::new(),
+                median_function_value_history: &VecDeque::new(),
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(1.0),
+            }.check_termination_criteria(),
             vec![TerminationReason::MaxGenerations],
         );
     }
@@ -360,16 +389,18 @@ mod tests {
         let time_started = Instant::now() - Duration::from_secs(5);
 
         assert_eq!(
-            check_termination_criteria(
-                0,
-                time_started,
-                &get_parameters(initial_sigma, None, None, Some(max_time), None),
-                &state,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(1.0),
-            ),
+            TerminationCheck {
+                current_function_evals: 0,
+                time_created: time_started,
+                parameters: &get_parameters(initial_sigma, None, None, Some(max_time), None),
+                state: &state,
+                best_function_value_history: &VecDeque::new(),
+                median_function_value_history: &VecDeque::new(),
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(1.0),
+            }.check_termination_criteria(),
             vec![TerminationReason::MaxTime],
         );
     }
@@ -380,17 +411,18 @@ mod tests {
         let initial_sigma = None;
         let state = get_state(initial_sigma);
 
-        assert!(check_termination_criteria(
-            0,
-            Instant::now(),
-            &get_parameters(initial_sigma, None, None, None, None),
-            &state,
-            &VecDeque::new(),
-            &VecDeque::new(),
-            MAX_HISTORY_LENGTH,
-            &get_dummy_generation(1.0),
-        )
-        .is_empty());
+        assert!(TerminationCheck {
+            current_function_evals: 0,
+            time_created:  Instant::now(),
+            parameters: &get_parameters(initial_sigma, None, None, None, None),
+            state: &state,
+            best_function_value_history: &VecDeque::new(),
+            median_function_value_history: &VecDeque::new(),
+            first_median_value: Some(0.0),
+            best_median_value: Some(0.0),
+            max_history_size: MAX_HISTORY_LENGTH,
+            individuals: &get_dummy_generation(1.0),
+       }.check_termination_criteria().is_empty());
     }
 
     #[test]
@@ -409,17 +441,18 @@ mod tests {
             )
             .unwrap();
 
-        assert!(check_termination_criteria(
-            0,
-            Instant::now(),
-            &get_parameters(initial_sigma, None, None, None, None),
-            &state,
-            &VecDeque::new(),
-            &VecDeque::new(),
-            MAX_HISTORY_LENGTH,
-            &get_dummy_generation(1.0),
-        )
-        .is_empty());
+        assert!(TerminationCheck {
+            current_function_evals: 0,
+            time_created:  Instant::now(),
+            parameters: &get_parameters(initial_sigma, None, None, None, None),
+            state: &state,
+            best_function_value_history: &VecDeque::new(),
+            median_function_value_history: &VecDeque::new(),
+            first_median_value: Some(0.0),
+            best_median_value: Some(0.0),
+            max_history_size: MAX_HISTORY_LENGTH,
+            individuals: &get_dummy_generation(1.0),
+       }.check_termination_criteria().is_empty());
     }
 
     #[test]
@@ -429,16 +462,18 @@ mod tests {
         let state = get_state(initial_sigma);
 
         assert_eq!(
-            check_termination_criteria(
-                0,
-                Instant::now(),
-                &get_parameters(initial_sigma, None, None, None, None),
-                &state,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(1e-16),
-            ),
+            TerminationCheck {
+                current_function_evals: 0,
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                state: &state,
+                best_function_value_history: &VecDeque::new(),
+                median_function_value_history: &VecDeque::new(),
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(1e-16),
+            }.check_termination_criteria(),
             vec![TerminationReason::FunTarget],
         );
     }
@@ -454,17 +489,52 @@ mod tests {
         best_function_value_history.push_front(1.0 + 1e-13);
 
         assert_eq!(
-            check_termination_criteria(
-                0,
-                Instant::now(),
-                &get_parameters(initial_sigma, None, None, None, Some(0.0)),
-                &state,
-                &best_function_value_history,
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(best_function_value_history[0]),
-            ),
+            TerminationCheck {
+                current_function_evals: 0,
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, None, None, None, Some(0.0)),
+                state: &state,
+                best_function_value_history: &best_function_value_history,
+                median_function_value_history: &VecDeque::new(),
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(best_function_value_history[0]),
+            }.check_termination_criteria(),
             vec![TerminationReason::TolFun],
+        );
+    }
+
+    #[test]
+    fn test_check_termination_criteria_tol_fun_rel() {
+        // Small ranges of current and historical function values relative to the overall
+        // improvement in median function value produces TolFunRel
+        let initial_sigma = None;
+        let state = get_state(initial_sigma);
+
+        let mut best_function_value_history = VecDeque::new();
+        best_function_value_history.extend(vec![1.0; 100]);
+        // Outside the range of TolFun
+        best_function_value_history.push_front(1.01);
+
+        // A very large improve increases the range of TolFunRel
+        let first_median_value = Some(1e12);
+        let best_median_value = Some(1.0);
+
+        assert_eq!(
+            TerminationCheck {
+                current_function_evals: 0,
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                state: &state,
+                best_function_value_history: &best_function_value_history,
+                median_function_value_history: &VecDeque::new(),
+                first_median_value,
+                best_median_value,
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(best_function_value_history[0]),
+            }.check_termination_criteria(),
+            vec![TerminationReason::TolFunRel],
         );
     }
 
@@ -479,16 +549,18 @@ mod tests {
         best_function_value_history.push_front(1.01);
 
         assert_eq!(
-            check_termination_criteria(
-                0,
-                Instant::now(),
-                &get_parameters(initial_sigma, None, None, None, Some(0.05)),
-                &state,
-                &best_function_value_history,
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(1.0),
-            ),
+            TerminationCheck {
+                current_function_evals: 0,
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, None, None, None, Some(0.05)),
+                state: &state,
+                best_function_value_history: &best_function_value_history,
+                median_function_value_history: &VecDeque::new(),
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(1.0),
+            }.check_termination_criteria(),
             vec![TerminationReason::TolFunHist],
         );
     }
@@ -502,16 +574,18 @@ mod tests {
         *state.mut_sigma() = 1e-13;
 
         assert_eq!(
-            check_termination_criteria(
-                0,
-                Instant::now(),
-                &get_parameters(initial_sigma, None, None, None, None),
-                &state,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(1.0),
-            ),
+            TerminationCheck {
+                current_function_evals: 0,
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                state: &state,
+                best_function_value_history: &VecDeque::new(),
+                median_function_value_history: &VecDeque::new(),
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(1.0),
+            }.check_termination_criteria(),
             vec![TerminationReason::TolX],
         );
     }
@@ -537,16 +611,18 @@ mod tests {
         let median_function_value_history = values.clone().into();
 
         assert_eq!(
-            check_termination_criteria(
-                0,
-                Instant::now(),
-                &get_parameters(initial_sigma, None, None, None, None),
-                &state,
-                &best_function_value_history,
-                &median_function_value_history,
-                values.len(),
-                &get_dummy_generation(1.0),
-            ),
+            TerminationCheck {
+                current_function_evals: 0,
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                state: &state,
+                best_function_value_history: &best_function_value_history,
+                median_function_value_history: &median_function_value_history,
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: values.len(),
+                individuals: &get_dummy_generation(1.0),
+            }.check_termination_criteria(),
             vec![TerminationReason::Stagnation],
         );
     }
@@ -560,16 +636,18 @@ mod tests {
         *state.mut_sigma() = 1e8;
 
         assert_eq!(
-            check_termination_criteria(
-                0,
-                Instant::now(),
-                &get_parameters(initial_sigma, None, None, None, None),
-                &state,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(1.0),
-            ),
+            TerminationCheck {
+                current_function_evals: 0,
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                state: &state,
+                best_function_value_history: &VecDeque::new(),
+                median_function_value_history: &VecDeque::new(),
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(1.0),
+            }.check_termination_criteria(),
             vec![TerminationReason::TolXUp],
         );
     }
@@ -596,16 +674,18 @@ mod tests {
         for g in 0..DIM {
             *state.mut_generation() = g;
 
-            let termination_reasons = check_termination_criteria(
-                0,
-                Instant::now(),
-                &get_parameters(initial_sigma, None, None, None, None),
-                &state,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(1.0),
-            );
+            let termination_reasons = TerminationCheck {
+                current_function_evals: 0,
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                state: &state,
+                best_function_value_history: &VecDeque::new(),
+                median_function_value_history: &VecDeque::new(),
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(1.0),
+            }.check_termination_criteria();
 
             if !termination_reasons.is_empty() {
                 assert_eq!(termination_reasons, vec![TerminationReason::NoEffectAxis]);
@@ -633,16 +713,18 @@ mod tests {
         for g in 0..DIM {
             *state.mut_generation() = g;
 
-            let termination_reasons = check_termination_criteria(
-                0,
-                Instant::now(),
-                &get_parameters(initial_sigma, None, None, None, None),
-                &state,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(1.0),
-            );
+            let termination_reasons = TerminationCheck {
+                current_function_evals: 0,
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                state: &state,
+                best_function_value_history: &VecDeque::new(),
+                median_function_value_history: &VecDeque::new(),
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(1.0),
+            }.check_termination_criteria();
 
             if !termination_reasons.is_empty() {
                 assert_eq!(termination_reasons, vec![TerminationReason::NoEffectCoord]);
@@ -668,16 +750,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            check_termination_criteria(
-                0,
-                Instant::now(),
-                &get_parameters(initial_sigma, None, None, None, None),
-                &state,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                MAX_HISTORY_LENGTH,
-                &get_dummy_generation(1.0),
-            ),
+            TerminationCheck {
+                current_function_evals: 0,
+                time_created: Instant::now(),
+                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                state: &state,
+                best_function_value_history: &VecDeque::new(),
+                median_function_value_history: &VecDeque::new(),
+                first_median_value: Some(0.0),
+                best_median_value: Some(0.0),
+                max_history_size: MAX_HISTORY_LENGTH,
+                individuals: &get_dummy_generation(1.0),
+            }.check_termination_criteria(),
             vec![TerminationReason::TolConditionCov],
         );
     }
