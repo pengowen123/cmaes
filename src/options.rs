@@ -79,6 +79,11 @@ pub struct CMAESOptions {
     /// termination criterion. Default value is `1e-12 * initial_step_size`, used if this field is
     /// `None`.
     pub tol_x: Option<f64>,
+    /// The minimum number of generations over which to measure the
+    /// [`TerminationReason::TolStagnation`][crate::TerminationReason::TolStagnation] termination
+    /// criterion. Default value is `100 + 100 * dimensions^1.5 / lambda`, used if this field is
+    /// `None`.
+    pub tol_stagnation: Option<usize>,
     /// The value to use for the [`TerminationReason::TolXUp`][crate::TerminationReason::TolXUp]
     /// termination criterion. Default value is `1e+8`.
     pub tol_x_up: f64,
@@ -117,6 +122,7 @@ impl CMAESOptions {
             tol_fun_rel: 0.0,
             tol_fun_hist: 1e-12,
             tol_x: None,
+            tol_stagnation: None,
             tol_x_up: 1e8,
             tol_condition_cov: 1e14,
             seed: None,
@@ -210,6 +216,13 @@ impl CMAESOptions {
     /// [`TerminationReason::TolX`][crate::TerminationReason::TolX]).
     pub fn tol_x(mut self, tol_x: f64) -> Self {
         self.tol_x = Some(tol_x);
+        self
+    }
+
+    /// Changes the minimum value for the `TolStagnation` termination criterion from the default
+    /// value (see [`TerminationReason::TolStagnation`][crate::TerminationReason::TolStagnation]).
+    pub fn tol_stagnation(mut self, tol_stagnation: usize) -> Self {
+        self.tol_stagnation = Some(tol_stagnation);
         self
     }
 

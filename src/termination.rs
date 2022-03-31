@@ -9,7 +9,7 @@ use std::time::Instant;
 use crate::parameters::Parameters;
 use crate::sampling::EvaluatedPoint;
 use crate::state::State;
-use crate::utils;
+use crate::{utils, MAX_HISTORY_LENGTH};
 
 /// Represents a reason for the algorithm terminating. Most of these are for preventing numerical
 /// instability, while `Tol*` are problem-dependent parameters and `Max*` are for bounding
@@ -29,7 +29,7 @@ pub enum TerminationReason {
     /// value has stopped changing significantly and that the function value spread of each
     /// generation is equally insignificant.
     TolFun,
-    /// Like `TolFun`, but the range is `tol_fun_rel * (first_median - current_median)` (i.e. it is
+    /// Like `TolFun`, but the range is `tol_fun_rel * (first_median - best_median)` (i.e. it is
     /// relative to the overall improvement in the median objective function value).
     TolFunRel,
     /// The range of best function values in many consecutive generations is lower than
@@ -38,8 +38,10 @@ pub enum TerminationReason {
     /// The standard deviation of the distribution is smaller than `tol_x` in every coordinate and
     /// the mean has not moved much recently. Indicates that the algorithm has converged.
     TolX,
-    /// The best and median function values have not improved significantly over many generations.
-    Stagnation,
+    /// The best and median function values have not improved over the past 20% of all generations,
+    /// clamped to the range `[tol_stagnation, MAX_HISTORY_LENGTH]`. Setting `tol_stagnation` to be
+    /// greater than `MAX_HISTORY_LENGTH` effectively disables this termination criterion.
+    TolStagnation,
     /// The maximum standard deviation across all distribution axes increased by a factor of more
     /// than `tol_x_up`. This is likely due to the function diverging or the initial step size being
     /// set far too small. In the latter case a restart with a larger step size may be useful.
@@ -78,7 +80,6 @@ pub(crate) struct TerminationCheck<'a> {
     pub state: &'a State,
     pub best_function_value_history: &'a VecDeque<f64>,
     pub median_function_value_history: &'a VecDeque<f64>,
-    pub max_history_size: usize,
     /// The median objective function value of the first generation
     pub first_median_value: Option<f64>,
     /// The best median objective function value of any generation
@@ -100,6 +101,7 @@ impl<'a> TerminationCheck<'a> {
         let tol_fun_rel_option = self.parameters.tol_fun_rel();
         let tol_fun_hist = self.parameters.tol_fun_hist();
         let tol_x = self.parameters.tol_x();
+        let tol_stagnation = self.parameters.tol_stagnation();
         let tol_x_up = self.parameters.tol_x_up();
         let tol_condition_cov = self.parameters.tol_condition_cov();
 
@@ -207,43 +209,48 @@ impl<'a> TerminationCheck<'a> {
             }
         }
 
-        // Check TerminationReason::Stagnation
-        let past_generations_b = self.max_history_size;
+        // Check TerminationReason::TolStagnation
+        let tol_stagnation_generations =
+            get_tol_stagnation_generations(tol_stagnation, self.state.generation());
 
-        if self.best_function_value_history.len() >= past_generations_b
-            && self.median_function_value_history.len() >= past_generations_b
-        {
-            // Checks whether the median of the values has improved over the past
-            // `past_generations_b` generations
-            // Returns false if the values either did not improve significantly or became worse
-            let did_values_improve = |values: &VecDeque<f64>| {
-                let subrange_length = (past_generations_b as f64 * 0.3) as usize;
-
-                // Most recent `subrange_length `values within the past `past_generations_b`
-                // generations
-                let first_values = values
-                    .iter()
-                    .take(past_generations_b)
-                    .take(subrange_length)
-                    .cloned()
-                    .collect::<Vec<_>>();
-
-                // Least recent `subrange_length` values within the past `past_generations_b`
-                // generations
-                let last_values = values
-                    .iter()
-                    .take(past_generations_b)
-                    .skip(past_generations_b - subrange_length)
-                    .cloned()
-                    .collect::<Vec<_>>();
-
-                Data::new(first_values).median() < Data::new(last_values).median()
-            };
-
-            if !did_values_improve(self.best_function_value_history)
-                && !did_values_improve(self.median_function_value_history)
+        if let Some(tol_stagnation_generations) = tol_stagnation_generations {
+            if self.best_function_value_history.len() >= tol_stagnation_generations
+                && self.median_function_value_history.len() >= tol_stagnation_generations
             {
-                result.push(TerminationReason::Stagnation);
+                // Checks whether the median of the values has regressed over the past
+                // `tol_stagnation_generations` generations
+                // Returns true if the values became worse
+                let did_values_regress = |values: &VecDeque<f64>| {
+                    // Note that TolStagnation is effectively disabled if tol_stagnation is < 4, but
+                    // it's not reasonable for anyone to set it that low anyways
+                    let subrange_length = (tol_stagnation as f64 * 0.3) as usize;
+
+                    // Most recent `subrange_length `values within the past
+                    // `tol_stagnation_generations` generations
+                    let first_values = values
+                        .iter()
+                        .take(tol_stagnation_generations)
+                        .take(subrange_length)
+                        .cloned()
+                        .collect::<Vec<_>>();
+
+                    // Least recent `subrange_length` values within the past
+                    // tol_stagnation_generations` generations
+                    let last_values = values
+                        .iter()
+                        .take(tol_stagnation_generations)
+                        .skip(tol_stagnation_generations - subrange_length)
+                        .cloned()
+                        .collect::<Vec<_>>();
+
+                    Data::new(first_values).median() > Data::new(last_values).median()
+                };
+
+                if did_values_regress(self.best_function_value_history)
+                    && did_values_regress(self.median_function_value_history)
+                {
+                    result.push(TerminationReason::TolStagnation);
+                }
             }
         }
 
@@ -263,6 +270,32 @@ impl<'a> TerminationCheck<'a> {
     }
 }
 
+/// Returns the default value for the `tol_stagnation` option (which is the lower bound for
+/// `TolStagnation`)
+pub(crate) fn get_default_tol_stagnation_option(dim: usize, lambda: usize) -> usize {
+    100 + (100.0 * (dim as f64).powf(1.5) / lambda as f64).ceil() as usize
+}
+
+/// Returns the number of generations over which to check `TolStagnation`
+///
+/// Returns `None` if the history isn't long enough to perform the check
+fn get_tol_stagnation_generations(
+    tol_stagnation_option: usize,
+    current_generation: usize,
+) -> Option<usize> {
+    // 20% of past generations
+    let generations = (current_generation / 5)
+        // At most the max history length
+        .min(MAX_HISTORY_LENGTH);
+
+    // Don't check TolStagnation if `generations` is below the lower bound
+    if generations < tol_stagnation_option {
+        None
+    } else {
+        Some(generations)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use nalgebra::DVector;
@@ -274,9 +307,26 @@ mod tests {
     use crate::parameters::{TerminationParameters, Weights};
     use crate::state::State;
 
+    #[test]
+    fn test_get_default_tol_stagnation_option() {
+        assert_eq!(180, get_default_tol_stagnation_option(4, 10));
+        assert_eq!(600, get_default_tol_stagnation_option(100, 200));
+    }
+
+    #[test]
+    fn test_get_tol_stagnation_generations() {
+        assert_eq!(Some(0), get_tol_stagnation_generations(0, 0));
+        assert_eq!(None, get_tol_stagnation_generations(100, 0));
+        assert_eq!(None, get_tol_stagnation_generations(100, 200));
+        assert_eq!(Some(100), get_tol_stagnation_generations(100, 500));
+        assert_eq!(Some(400), get_tol_stagnation_generations(100, 2000));
+        assert_eq!(Some(20_000), get_tol_stagnation_generations(100, 1_000_000));
+        assert_eq!(None, get_tol_stagnation_generations(30_000, 1_000_000));
+    }
+
     const DEFAULT_INITIAL_SIGMA: f64 = 0.5;
     const DIM: usize = 2;
-    const MAX_HISTORY_LENGTH: usize = 100;
+    const TOL_STAGNATION: usize = 40;
 
     fn get_parameters(
         initial_sigma: Option<f64>,
@@ -297,6 +347,7 @@ mod tests {
             tol_fun_rel: 1e-12,
             tol_fun_hist: tol_fun_hist.unwrap_or(1e-12),
             tol_x: 1e-12 * initial_sigma,
+            tol_stagnation: TOL_STAGNATION,
             tol_x_up: 1e8,
             tol_condition_cov: 1e14,
         };
@@ -349,7 +400,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(1.0),
             }.check_termination_criteria(),
             vec![TerminationReason::MaxFunctionEvals],
@@ -373,7 +423,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(1.0),
             }.check_termination_criteria(),
             vec![TerminationReason::MaxGenerations],
@@ -398,7 +447,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(1.0),
             }.check_termination_criteria(),
             vec![TerminationReason::MaxTime],
@@ -420,7 +468,6 @@ mod tests {
             median_function_value_history: &VecDeque::new(),
             first_median_value: Some(0.0),
             best_median_value: Some(0.0),
-            max_history_size: MAX_HISTORY_LENGTH,
             individuals: &get_dummy_generation(1.0),
        }.check_termination_criteria().is_empty());
     }
@@ -450,7 +497,6 @@ mod tests {
             median_function_value_history: &VecDeque::new(),
             first_median_value: Some(0.0),
             best_median_value: Some(0.0),
-            max_history_size: MAX_HISTORY_LENGTH,
             individuals: &get_dummy_generation(1.0),
        }.check_termination_criteria().is_empty());
     }
@@ -471,7 +517,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(1e-16),
             }.check_termination_criteria(),
             vec![TerminationReason::FunTarget],
@@ -498,7 +543,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(best_function_value_history[0]),
             }.check_termination_criteria(),
             vec![TerminationReason::TolFun],
@@ -531,7 +575,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value,
                 best_median_value,
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(best_function_value_history[0]),
             }.check_termination_criteria(),
             vec![TerminationReason::TolFunRel],
@@ -558,7 +601,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(1.0),
             }.check_termination_criteria(),
             vec![TerminationReason::TolFunHist],
@@ -583,7 +625,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(1.0),
             }.check_termination_criteria(),
             vec![TerminationReason::TolX],
@@ -591,24 +632,22 @@ mod tests {
     }
 
     #[test]
-    fn test_check_termination_criteria_stagnation() {
-        // Median/best function values that change but don't improve for many generations produces
-        // Stagnation
+    fn test_check_termination_criteria_tol_stagnation() {
+        // Median/best function values that don't improve over many generations produces
+        // TolStagnation
         let initial_sigma = None;
-        let state = get_state(initial_sigma);
-
-        let mut best_function_value_history = VecDeque::new();
-        best_function_value_history.extend(vec![1.0; 100]);
-        // Equal to 1.0 due to lack of precision
-        best_function_value_history.push_front(1.0 + 1e-17);
+        let mut state = get_state(initial_sigma);
 
         let mut values = Vec::new();
-        values.extend(vec![1.0; 10]);
-        values.extend(vec![2.0; 10]);
-        values.extend(vec![2.0; 10]);
-        values.extend(vec![1.0; 10]);
+        values.extend(vec![3.0; TOL_STAGNATION / 4]);
+        values.extend(vec![2.0; TOL_STAGNATION / 4]);
+        values.extend(vec![1.0; TOL_STAGNATION / 4]);
+        values.extend(vec![0.0; TOL_STAGNATION / 4]);
         let best_function_value_history = values.clone().into();
         let median_function_value_history = values.clone().into();
+
+        // TolStagnation is disabled until the generation is high enough
+        *state.mut_generation() = TOL_STAGNATION * 5;
 
         assert_eq!(
             TerminationCheck {
@@ -620,10 +659,9 @@ mod tests {
                 median_function_value_history: &median_function_value_history,
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: values.len(),
                 individuals: &get_dummy_generation(1.0),
             }.check_termination_criteria(),
-            vec![TerminationReason::Stagnation],
+            vec![TerminationReason::TolStagnation],
         );
     }
 
@@ -645,7 +683,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(1.0),
             }.check_termination_criteria(),
             vec![TerminationReason::TolXUp],
@@ -683,7 +720,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(1.0),
             }.check_termination_criteria();
 
@@ -722,7 +758,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(1.0),
             }.check_termination_criteria();
 
@@ -735,7 +770,7 @@ mod tests {
     }
 
     #[test]
-    fn test_check_termination_criteria_condition_cov() {
+    fn test_check_termination_criteria_tol_condition_cov() {
         // A large difference between the maximum and minimum standard deviations produces
         // TolConditionCov
         let initial_sigma = None;
@@ -759,7 +794,6 @@ mod tests {
                 median_function_value_history: &VecDeque::new(),
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
-                max_history_size: MAX_HISTORY_LENGTH,
                 individuals: &get_dummy_generation(1.0),
             }.check_termination_criteria(),
             vec![TerminationReason::TolConditionCov],

@@ -78,6 +78,9 @@ use crate::sampling::{EvaluatedPoint, InvalidFunctionValueError, Sampler};
 use crate::state::State;
 use crate::termination::TerminationCheck;
 
+/// The maximum number of elements to store in the objective function value histories.
+pub const MAX_HISTORY_LENGTH: usize = 20_000;
+
 /// An individual point with its corresponding objective function value.
 #[derive(Clone, Debug)]
 pub struct Individual {
@@ -207,6 +210,11 @@ impl<'a> CMAES<'a> {
 
         // Initialize constant parameters according to the options
         let tol_x = options.tol_x.unwrap_or(1e-12 * options.initial_step_size);
+        let default_tol_stagnation = termination::get_default_tol_stagnation_option(
+            options.dimensions,
+            options.population_size,
+        );
+        let tol_stagnation = options.tol_stagnation.unwrap_or(default_tol_stagnation);
         let termination_parameters = TerminationParameters {
             max_function_evals: options.max_function_evals,
             max_generations: options.max_generations,
@@ -216,6 +224,7 @@ impl<'a> CMAES<'a> {
             tol_fun_rel: options.tol_fun_rel,
             tol_fun_hist: options.tol_fun_hist,
             tol_x,
+            tol_stagnation,
             tol_x_up: options.tol_x_up,
             tol_condition_cov: options.tol_condition_cov,
         };
@@ -289,10 +298,7 @@ impl<'a> CMAES<'a> {
     /// values.
     ///
     /// Returns `Err` if an invalid function value was encountered.
-    fn sample(
-        &mut self,
-        max_history_size: usize,
-    ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
+    fn sample(&mut self) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
         // Sample points
         let individuals = self.sampler.sample(&self.state)?;
 
@@ -300,22 +306,27 @@ impl<'a> CMAES<'a> {
         let best = &individuals[0];
 
         self.best_function_value_history.push_front(best.value());
-        if self.best_function_value_history.len() > max_history_size {
+        if self.best_function_value_history.len() > MAX_HISTORY_LENGTH {
             self.best_function_value_history.pop_back();
         }
-        // Not perfectly accurate but it shouldn't make a difference
-        let median = &individuals[individuals.len() / 2];
+
+        let median_value = if individuals.len() % 2 == 0 {
+            (individuals[individuals.len() / 2 - 1].value()
+                + individuals[individuals.len() / 2].value()) / 2.0
+        } else {
+            individuals[individuals.len() / 2].value()
+        };
         self.median_function_value_history
-            .push_front(median.value());
-        if self.median_function_value_history.len() > max_history_size {
+            .push_front(median_value);
+        if self.median_function_value_history.len() > MAX_HISTORY_LENGTH {
             self.median_function_value_history.pop_back();
         }
 
-        self.first_median_value = self.first_median_value.or(Some(median.value()));
+        self.first_median_value = self.first_median_value.or(Some(median_value));
 
         match self.best_median_value {
-            Some(ref mut value) => *value = value.min(median.value()),
-            None => self.best_median_value = Some(median.value()),
+            Some(ref mut value) => *value = value.min(median_value),
+            None => self.best_median_value = Some(median_value),
         }
 
         self.update_best_individuals(Individual::new(best.point().clone(), best.value()));
@@ -330,18 +341,8 @@ impl<'a> CMAES<'a> {
     #[allow(clippy::should_implement_trait)]
     #[must_use]
     pub fn next(&mut self) -> Option<TerminationData> {
-        let dim = self.parameters.dim();
-        let lambda = self.parameters.lambda();
-
-        // How many generations to store in self.best_function_value_history and
-        // self.median_function_value_history
-        // This is the largest history size required by any termination criterion
-        let max_history_size = ((0.2 * self.state.generation() as f64).ceil() as usize)
-            .max(120 + (30.0 * dim as f64 / lambda as f64).ceil() as usize)
-            .min(20000);
-
         // Sample individuals
-        let individuals = match self.sample(max_history_size) {
+        let individuals = match self.sample() {
             Ok(x) => x,
             Err(_) => {
                 return Some(
@@ -396,7 +397,6 @@ impl<'a> CMAES<'a> {
             median_function_value_history: &self.median_function_value_history,
             first_median_value: self.first_median_value,
             best_median_value: self.best_median_value,
-            max_history_size,
             individuals: &individuals,
         }.check_termination_criteria();
 

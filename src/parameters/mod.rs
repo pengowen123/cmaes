@@ -13,11 +13,11 @@ use weights::{FinalWeights, InitialWeights};
 /// Parameters of the termination criteria
 #[derive(Clone, Debug)]
 pub(crate) struct TerminationParameters {
-    /// Value for the MaxFunctionEvals termination criterion
+    /// Value for the MaxFunctionEvals termination criterion (disabled if `None`)
     pub max_function_evals: Option<usize>,
-    /// Value for the MaxGenerations termination criterion
+    /// Value for the MaxGenerations termination criterion (disabled if `None`)
     pub max_generations: Option<usize>,
-    /// Value for the MaxTime termination criterion
+    /// Value for the MaxTime termination criterion (disabled if `None`)
     pub max_time: Option<Duration>,
     /// Value for the FunTarget termination criterion
     pub fun_target: f64,
@@ -29,6 +29,8 @@ pub(crate) struct TerminationParameters {
     pub tol_fun_hist: f64,
     /// Value for the TolX termination criterion
     pub tol_x: f64,
+    /// Minimum value for the TolStagnation termination criterion
+    pub tol_stagnation: usize,
     /// Value for the TolXUp termination criterion
     pub tol_x_up: f64,
     /// Value for the TolConditionCov termination criterion
@@ -231,6 +233,13 @@ impl Parameters {
     /// termination criterion.
     pub fn tol_x(&self) -> f64 {
         self.termination.tol_x
+    }
+
+    /// Returns the minimum value for the
+    /// [`TerminationReason::TolStagnation`][crate::TerminationReason::TolStagnation] termination
+    /// criterion.
+    pub fn tol_stagnation(&self) -> usize {
+        self.termination.tol_stagnation
     }
 
     /// Returns the value for the [`TerminationReason::TolXUp`][crate::TerminationReason::TolXUp]

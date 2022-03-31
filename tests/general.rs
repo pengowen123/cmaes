@@ -55,9 +55,8 @@ fn run_test<F: ObjectiveFunction + Clone + 'static>(
     println!("reasons: {:?}", reasons);
     assert!(
         failures.len() <= max_failures,
-        "max failures exceeded: {}, {:?}",
+        "max failures exceeded: {}",
         failures.len(),
-        failures,
     );
     assert!(avg_evals < max_avg_evals);
     assert!(highest_evals < max_avg_evals * 2);
