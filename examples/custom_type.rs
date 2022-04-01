@@ -36,25 +36,22 @@ fn main() {
     // Initialize the objective function
     let mut function = Rosenbrock::new(5.0, 30.0);
 
-    // A scope must be used to prevent overlapping borrows
-    {
-        // Customize parameters for the problem
-        let dim = 2;
-        let mut cmaes_state = CMAESOptions::new(vec![0.1; dim], 0.1)
-            .enable_printing(200)
-            // Use a mutable reference to the function so its state can be retrieved easily later
-            .build(&mut function)
-            .unwrap();
+    // Customize parameters for the problem
+    let dim = 2;
+    let mut cmaes_state = CMAESOptions::new(vec![0.1; dim], 0.1)
+        .enable_printing(200)
+        // Use a mutable reference to the function so its state can be retrieved easily later
+        .build(&mut function)
+        .unwrap();
 
-        // Find a solution
-        let solution = cmaes_state.run();
-        let overall_best = solution.overall_best.unwrap();
+    // Find a solution
+    let solution = cmaes_state.run();
+    let overall_best = solution.overall_best.unwrap();
 
-        println!(
-            "Solution individual has value {:e} and point {}",
-            overall_best.value, overall_best.point,
-        );
-    }
+    println!(
+        "Solution individual has value {:e} and point {}",
+        overall_best.value, overall_best.point,
+    );
 
     // Retrieve the state stored in the objective function
     println!(

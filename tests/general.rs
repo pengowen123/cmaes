@@ -278,28 +278,32 @@ mod consistent {
         let _ = CMAESOptions::new(vec![0.0; 5], 1.0)
             .build(&mut non_static_function)
             .unwrap();
-        let non_static_state = CMAESOptions::new(vec![0.0; 5], 1.0)
+        let _ = CMAESOptions::new(vec![0.0; 5], 1.0)
             .build(non_static_function)
             .unwrap();
 
-        // Storing a CMAES with a static objective function without dealing with lifetimes
-        struct StaticContainer(CMAES<'static>);
+        // Storing a CMAES with a static objective function without dealing with type parameters
+        struct StaticContainer(CMAES<Box<dyn ObjectiveFunction>>);
 
         let static_function = |x: &DVector<f64>| x.magnitude();
 
-        let static_state = CMAESOptions::new(vec![0.0; 5], 1.0)
-            .build(static_function)
+        let static_cmaes = CMAESOptions::new(vec![0.0; 5], 1.0)
+            .build(Box::new(static_function) as _)
             .unwrap();
-        StaticContainer(static_state);
+        StaticContainer(static_cmaes);
 
         // Storing a CMAES with any lifetime
-        struct NonStaticContainer<'a>(CMAES<'a>);
-        NonStaticContainer(non_static_state);
+        struct NonStaticContainer<F: ObjectiveFunction>(CMAES<F>);
 
-        let static_state = CMAESOptions::new(vec![0.0; 5], 1.0)
-            .build(static_function)
+        let mut x = 0.0;
+        let mut non_static_function = |_: &DVector<f64>| {
+            x += 1.0;
+            x
+        };
+        let non_static_cmaes = CMAESOptions::new(vec![0.0; 5], 1.0)
+            .build(&mut non_static_function)
             .unwrap();
-        NonStaticContainer(static_state);
+        NonStaticContainer(non_static_cmaes);
     }
 
     #[test]

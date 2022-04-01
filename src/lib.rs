@@ -116,34 +116,29 @@ pub struct TerminationData {
 /// A type that handles algorithm iteration and printing/plotting of results. Use [`CMAESOptions`]
 /// to create a `CMAES`.
 ///
-/// # Lifetimes
+/// # Type parameters
 ///
-/// The objective function may be non-`'static` (i.e., it borrows something), so there is a lifetime
-/// parameter. If this functionality is not needed and the `CMAES` type must be specified
-/// somewhere, the lifetime can simply be set to `'static`:
-///
-/// ```
-/// # use cmaes::CMAES;
-/// struct Container(CMAES<'static>);
-/// ```
-///
-/// In the case of a closure that references variables from its scope, the `move` keyword can be
-/// used to force a static lifetime:
+/// Static dispatch for the objective function type is used by default, but if this is not
+/// desirable then dynamic dispatch can be used instead:
 ///
 /// ```
-/// # use cmaes::{CMAESOptions, CMAES, DVector};
-/// # struct Container(CMAES<'static>);
+/// use cmaes::{CMAES, CMAESOptions, DVector, ObjectiveFunction};
+///
+/// struct Container(CMAES<Box<dyn ObjectiveFunction>>);
+///
 /// let mut x = 0.0;
 /// let function = move |_: &DVector<f64>| {
 ///     x += 1.0;
 ///     x
 /// };
-/// let cmaes_state = CMAESOptions::new(vec![0.0; 2], 1.0).build(function).unwrap();
+/// let cmaes_state = CMAESOptions::new(vec![0.0; 2], 1.0)
+///     .build(Box::new(function) as _)
+///     .unwrap();
 /// let container = Container(cmaes_state);
 /// ```
-pub struct CMAES<'a> {
+pub struct CMAES<F> {
     /// Point sampler/evaluator
-    sampler: Sampler<'a>,
+    sampler: Sampler<F>,
     /// Constant parameters
     parameters: Parameters,
     /// Variable state
@@ -161,13 +156,10 @@ pub struct CMAES<'a> {
     time_created: Instant,
 }
 
-impl<'a> CMAES<'a> {
+impl<F: ObjectiveFunction> CMAES<F> {
     /// Initializes a `CMAES` from a set of [`CMAESOptions`]. [`CMAESOptions::build`] should
     /// generally be used instead.
-    pub fn new(
-        objective_function: Box<dyn ObjectiveFunction + 'a>,
-        options: CMAESOptions,
-    ) -> Result<Self, InvalidOptionsError> {
+    pub fn new(objective_function: F, options: CMAESOptions) -> Result<Self, InvalidOptionsError> {
         let dimensions = options.initial_mean.len();
         // Check for invalid options
         if dimensions == 0 {
@@ -360,8 +352,9 @@ impl<'a> CMAES<'a> {
         }
     }
 
-    /// Consumes `self` and returns the objective function.
-    pub fn into_objective_function(self) -> Box<dyn ObjectiveFunction + 'a> {
+    /// Consumes `self` and returns the objective function. Useful for retrieving state stored in
+    /// custom objective function types.
+    pub fn into_objective_function(self) -> F {
         self.sampler.into_objective_function()
     }
 

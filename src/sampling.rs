@@ -10,7 +10,7 @@ use crate::state::State;
 use crate::{utils, ObjectiveFunction};
 
 /// A type for sampling and evaluating points from the distribution for each generation
-pub struct Sampler<'a> {
+pub struct Sampler<F> {
     /// Number of dimensions to sample from
     dim: usize,
     /// Number of points to sample each generation
@@ -18,18 +18,13 @@ pub struct Sampler<'a> {
     /// RNG from which all random numbers are sourced
     rng: ChaCha12Rng,
     /// The objective function to minimize, used to evaluate points
-    objective_function: Box<dyn ObjectiveFunction + 'a>,
+    objective_function: F,
     /// The number of times the objective function has been evaluated
     function_evals: usize,
 }
 
-impl<'a> Sampler<'a> {
-    pub fn new(
-        dim: usize,
-        population_size: usize,
-        objective_function: Box<dyn ObjectiveFunction + 'a>,
-        rng_seed: u64,
-    ) -> Self {
+impl<F: ObjectiveFunction> Sampler<F> {
+    pub fn new(dim: usize, population_size: usize, objective_function: F, rng_seed: u64) -> Self {
         Self {
             dim,
             population_size,
@@ -66,7 +61,7 @@ impl<'a> Sampler<'a> {
                     yk,
                     state.mean(),
                     state.sigma(),
-                    &mut *self.objective_function,
+                    &mut self.objective_function,
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -82,7 +77,7 @@ impl<'a> Sampler<'a> {
     }
 
     /// Consumes `self` and returns the objective function
-    pub fn into_objective_function(self) -> Box<dyn ObjectiveFunction + 'a> {
+    pub fn into_objective_function(self) -> F {
         self.objective_function
     }
 }

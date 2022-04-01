@@ -64,10 +64,8 @@ use nalgebra::DVector;
 /// // The objective function's state can be retrieved after optimization
 /// let mut custom = Custom { counter: 0.0 };
 ///
-/// {
-///     let mut cmaes_state = CMAESOptions::new(vec![0.0; 2], 1.0).build(&mut custom).unwrap();
-///     cmaes_state.run();
-/// }
+/// let mut cmaes_state = CMAESOptions::new(vec![0.0; 2], 1.0).build(&mut custom).unwrap();
+/// let solution = cmaes_state.run();
 ///
 /// println!("{}", custom.counter);
 /// ```
@@ -81,6 +79,12 @@ pub trait ObjectiveFunction {
 impl<F: FnMut(&DVector<f64>) -> f64> ObjectiveFunction for F {
     fn evaluate(&mut self, x: &DVector<f64>) -> f64 {
         (self)(x)
+    }
+}
+
+impl ObjectiveFunction for Box<dyn ObjectiveFunction> {
+    fn evaluate(&mut self, x: &DVector<f64>) -> f64 {
+        self.as_mut().evaluate(x)
     }
 }
 

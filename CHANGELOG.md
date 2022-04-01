@@ -20,6 +20,7 @@
 - Fixed panic occurring when the algorithm immediately terminates with `InvalidFunctionValue`.
 - Changed the types of the `current_best` and `overall_best` fields of `TerminationData` from `Individual` to `Option<Individual>`.
 - Made `initial_mean` and `initial_step_size` the required options for `CMAESOptions`. `dimensions` is now taken from `initial_mean`. Also removed `InvalidOptionsError::MeanDimension` to reflect these changes.
+- Switched to static dispatch for objective function types.
 
 ## 0.1.1 (March 4th, 2022)
 

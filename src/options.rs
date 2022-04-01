@@ -269,11 +269,11 @@ impl CMAESOptions {
 
     /// Attempts to build the [`CMAES`] using the chosen options. See [`CMAES`] for
     /// information about the lifetime parameter.
-    pub fn build<'a, F: ObjectiveFunction + 'a>(
+    pub fn build<F: ObjectiveFunction>(
         self,
         objective_function: F,
-    ) -> Result<CMAES<'a>, InvalidOptionsError> {
-        CMAES::new(Box::new(objective_function), self)
+    ) -> Result<CMAES<F>, InvalidOptionsError> {
+        CMAES::new(objective_function, self)
     }
 }
 
