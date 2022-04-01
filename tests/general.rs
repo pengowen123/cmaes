@@ -201,14 +201,21 @@ fn test_fixed_seed() {
     for (w, expected) in params.weights().iter().zip(weights_expected) {
         assert_approx_eq!(w, expected, eps);
     }
+
     assert_approx_eq!(params.cc(), 0.5, eps);
     assert_approx_eq!(params.c1(), 0.06285462000247571, eps);
     assert_approx_eq!(params.cs(), 0.4500944591496695, eps);
     assert_approx_eq!(params.cmu(), 0.10055985647786812, eps);
     assert_approx_eq!(params.cm(), 1.0, eps);
     assert_approx_eq!(params.damp_s(), 1.4500944591496694, eps);
+    assert_approx_eq!(params.fun_target(), 0.000000000001, eps);
     assert_approx_eq!(params.tol_fun(), 0.000000000001, eps);
+    assert_approx_eq!(params.tol_fun_rel(), 0.0, eps);
+    assert_approx_eq!(params.tol_fun_hist(), 0.000000000001, eps);
     assert_approx_eq!(params.tol_x(), 0.000000000005, eps);
+    assert_eq!(params.tol_stagnation(), 167);
+    assert_approx_eq!(params.tol_x_up(), 1e8, eps);
+    assert_approx_eq!(params.tol_condition_cov(), 1e14, eps);
     assert_eq!(params.seed(), seed);
 
     let generations = 10;
