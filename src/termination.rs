@@ -73,6 +73,7 @@ impl fmt::Display for TerminationReason {
 }
 
 /// Stores parameters of the termination check
+#[cfg_attr(test, derive(Clone))]
 pub(crate) struct TerminationCheck<'a> {
     pub current_function_evals: usize,
     /// The time at which the `CMAES` was created
@@ -332,6 +333,7 @@ mod tests {
         max_generations: Option<usize>,
         max_time: Option<Duration>,
         tol_fun_hist: Option<f64>,
+        tol_stagnation: Option<usize>,
     ) -> Parameters {
         let initial_sigma = initial_sigma.unwrap_or(DEFAULT_INITIAL_SIGMA);
         let lambda = 6;
@@ -345,7 +347,7 @@ mod tests {
             tol_fun_rel: 1e-12,
             tol_fun_hist: tol_fun_hist.unwrap_or(1e-12),
             tol_x: 1e-12 * initial_sigma,
-            tol_stagnation: TOL_STAGNATION,
+            tol_stagnation: tol_stagnation.unwrap_or(TOL_STAGNATION),
             tol_x_up: 1e8,
             tol_condition_cov: 1e14,
         };
@@ -392,7 +394,7 @@ mod tests {
             TerminationCheck {
                 current_function_evals,
                 time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, Some(100), None, None, None),
+                parameters: &get_parameters(initial_sigma, Some(100), None, None, None, None),
                 state: &state,
                 history: &History::new(),
                 individuals: &get_dummy_generation(1.0),
@@ -413,7 +415,7 @@ mod tests {
             TerminationCheck {
                 current_function_evals: 0,
                 time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, Some(100), None, None),
+                parameters: &get_parameters(initial_sigma, None, Some(100), None, None, None),
                 state: &state,
                 history: &History::new(),
                 individuals: &get_dummy_generation(1.0),
@@ -435,7 +437,7 @@ mod tests {
             TerminationCheck {
                 current_function_evals: 0,
                 time_created: time_started,
-                parameters: &get_parameters(initial_sigma, None, None, Some(max_time), None),
+                parameters: &get_parameters(initial_sigma, None, None, Some(max_time), None, None),
                 state: &state,
                 history: &History::new(),
                 individuals: &get_dummy_generation(1.0),
@@ -454,7 +456,7 @@ mod tests {
         assert!(TerminationCheck {
             current_function_evals: 0,
             time_created: Instant::now(),
-            parameters: &get_parameters(initial_sigma, None, None, None, None),
+            parameters: &get_parameters(initial_sigma, None, None, None, None, None),
             state: &state,
             history: &History::new(),
             individuals: &get_dummy_generation(1.0),
@@ -482,7 +484,7 @@ mod tests {
         assert!(TerminationCheck {
             current_function_evals: 0,
             time_created: Instant::now(),
-            parameters: &get_parameters(initial_sigma, None, None, None, None),
+            parameters: &get_parameters(initial_sigma, None, None, None, None, None),
             state: &state,
             history: &History::new(),
             individuals: &get_dummy_generation(1.0),
@@ -501,7 +503,7 @@ mod tests {
             TerminationCheck {
                 current_function_evals: 0,
                 time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
                 state: &state,
                 history: &History::new(),
                 individuals: &get_dummy_generation(1e-16),
@@ -525,7 +527,7 @@ mod tests {
             TerminationCheck {
                 current_function_evals: 0,
                 time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, Some(0.0)),
+                parameters: &get_parameters(initial_sigma, None, None, None, Some(0.0), None),
                 state: &state,
                 history: &history,
                 individuals: &get_dummy_generation(history.best_function_values()[0]),
@@ -555,7 +557,7 @@ mod tests {
             TerminationCheck {
                 current_function_evals: 0,
                 time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
                 state: &state,
                 history: &history,
                 individuals: &get_dummy_generation(history.best_function_values()[0]),
@@ -579,7 +581,7 @@ mod tests {
             TerminationCheck {
                 current_function_evals: 0,
                 time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, Some(0.05)),
+                parameters: &get_parameters(initial_sigma, None, None, None, Some(0.05), None),
                 state: &state,
                 history: &history,
                 individuals: &get_dummy_generation(1.0),
@@ -601,7 +603,7 @@ mod tests {
             TerminationCheck {
                 current_function_evals: 0,
                 time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
                 state: &state,
                 history: &History::new(),
                 individuals: &get_dummy_generation(1.0),
@@ -630,18 +632,23 @@ mod tests {
         // TolStagnation is disabled until the generation is high enough
         *state.mut_generation() = TOL_STAGNATION * 5;
 
+        let mut termination_check = TerminationCheck {
+            current_function_evals: 0,
+            time_created: Instant::now(),
+            parameters: &get_parameters(initial_sigma, None, None, None, None, None),
+            state: &state,
+            history: &history,
+            individuals: &get_dummy_generation(1.0),
+        };
         assert_eq!(
-            TerminationCheck {
-                current_function_evals: 0,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None),
-                state: &state,
-                history: &history,
-                individuals: &get_dummy_generation(1.0),
-            }
-            .check_termination_criteria(),
+            termination_check.clone().check_termination_criteria(),
             vec![TerminationReason::TolStagnation],
         );
+
+        // Check that no panic occurs if tol_stagnation is 0
+        let parameters_0 = get_parameters(initial_sigma, None, None, None, None, Some(0));
+        termination_check.parameters = &parameters_0;
+        assert!(termination_check.check_termination_criteria().is_empty());
     }
 
     #[test]
@@ -656,7 +663,7 @@ mod tests {
             TerminationCheck {
                 current_function_evals: 0,
                 time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
                 state: &state,
                 history: &History::new(),
                 individuals: &get_dummy_generation(1.0),
@@ -691,7 +698,7 @@ mod tests {
             let termination_reasons = TerminationCheck {
                 current_function_evals: 0,
                 time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
                 state: &state,
                 history: &History::new(),
                 individuals: &get_dummy_generation(1.0),
@@ -727,7 +734,7 @@ mod tests {
             let termination_reasons = TerminationCheck {
                 current_function_evals: 0,
                 time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
                 state: &state,
                 history: &History::new(),
                 individuals: &get_dummy_generation(1.0),
@@ -761,7 +768,7 @@ mod tests {
             TerminationCheck {
                 current_function_evals: 0,
                 time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None),
+                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
                 state: &state,
                 history: &History::new(),
                 individuals: &get_dummy_generation(1.0),

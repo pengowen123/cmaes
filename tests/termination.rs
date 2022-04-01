@@ -153,13 +153,6 @@ fn test_tol_stagnation() {
     // The function is noisy, so it will get worse occasionally
     let function = |x: &DVector<f64>| 1.0 + x.magnitude() + rand::random::<f64>() * 1e1;
 
-    // Check that no panic occurs if tol_stagnation is 0
-    let _ = CMAESOptions::new(2)
-        .tol_stagnation(0)
-        .build(function)
-        .unwrap()
-        .run();
-
     run_test(
         function,
         CMAESOptions::new(2)

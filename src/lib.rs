@@ -596,7 +596,10 @@ mod tests {
 
         let result = cmaes.run();
 
-        assert_eq!(vec![TerminationReason::InvalidFunctionValue], result.reasons);
+        assert_eq!(
+            vec![TerminationReason::InvalidFunctionValue],
+            result.reasons
+        );
     }
 
     #[test]
