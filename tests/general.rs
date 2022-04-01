@@ -32,14 +32,15 @@ fn run_test<F: ObjectiveFunction + Clone + 'static>(
             .unwrap();
 
         let result = cmaes_state.run();
+        let overall_best = result.overall_best.unwrap();
         let evals = cmaes_state.function_evals();
 
         for reason in &result.reasons {
             *reasons.entry(*reason).or_insert(0) += 1;
         }
 
-        if !(result.overall_best.value < options.tol_fun) {
-            failures.push((result.reasons, result.overall_best.value));
+        if !(overall_best.value < options.tol_fun) {
+            failures.push((result.reasons, overall_best.value));
         }
 
         total_evals += evals;

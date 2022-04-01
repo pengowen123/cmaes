@@ -104,8 +104,12 @@ impl Individual {
 /// whether and how to restart the algorithm
 #[derive(Clone, Debug)]
 pub struct TerminationData {
-    pub current_best: Individual,
-    pub overall_best: Individual,
+    /// Always `Some` unless the algorithm terminated in the first generation with
+    /// [`TerminationReason::InvalidFunctionValue`][crate::TerminationReason::InvalidFunctionValue].
+    pub current_best: Option<Individual>,
+    /// Always `Some` unless the algorithm terminated in the first generation with
+    /// [`TerminationReason::InvalidFunctionValue`][crate::TerminationReason::InvalidFunctionValue].
+    pub overall_best: Option<Individual>,
     pub final_mean: DVector<f64>,
     pub reasons: Vec<TerminationReason>,
 }
@@ -413,13 +417,17 @@ impl<'a> CMAES<'a> {
     }
 
     /// Returns the best individual of the latest generation and its function value. Will always
-    /// return `Some` as long as [`next`][Self::next] has been called at least once.
+    /// return `Some` as long as [`next`][Self::next] has been called at least once and the
+    /// algorithm did not terminate in the first generation with
+    /// [`TerminationReason::InvalidFunctionValue`][crate::TerminationReason::InvalidFunctionValue].
     pub fn current_best_individual(&self) -> Option<&Individual> {
         self.history.current_best_individual()
     }
 
-    /// Returns the best individual of any generation and its function value. Will always return
-    /// `Some` as long as [`next`][Self::next] has been called at least once.
+    /// Returns the best individual of any generation and its function value. Will always
+    /// return `Some` as long as [`next`][Self::next] has been called at least once and the
+    /// algorithm did not terminate in the first generation with
+    /// [`TerminationReason::InvalidFunctionValue`][crate::TerminationReason::InvalidFunctionValue].
     pub fn overall_best_individual(&self) -> Option<&Individual> {
         self.history.overall_best_individual()
     }
@@ -447,8 +455,8 @@ impl<'a> CMAES<'a> {
     /// Returns a `TerminationData` with the current best individual/value and the given reasons.
     fn get_termination_data(&self, reasons: Vec<TerminationReason>) -> TerminationData {
         return TerminationData {
-            current_best: self.current_best_individual().unwrap().clone(),
-            overall_best: self.overall_best_individual().unwrap().clone(),
+            current_best: self.current_best_individual().cloned(),
+            overall_best: self.overall_best_individual().cloned(),
             final_mean: self.state.mean().clone(),
             reasons,
         };
@@ -579,6 +587,16 @@ mod tests {
 
         assert!(cmaes.current_best_individual().is_some());
         assert!(cmaes.overall_best_individual().is_some());
+    }
+
+    #[test]
+    fn test_immediate_termination() {
+        let function = |_: &DVector<f64>| f64::NAN;
+        let mut cmaes = CMAESOptions::new(10).build(function).unwrap();
+
+        let result = cmaes.run();
+
+        assert_eq!(vec![TerminationReason::InvalidFunctionValue], result.reasons);
     }
 
     #[test]

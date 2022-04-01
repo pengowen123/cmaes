@@ -34,6 +34,7 @@ fn main() {
 
     // Find a solution
     let solution = cmaes_state.run();
+    let overall_best = solution.overall_best.unwrap();
 
     println!(
         "Final mean has value {:e}",
@@ -41,7 +42,7 @@ fn main() {
     );
     println!(
         "Solution individual has value {:e} and point {}",
-        solution.overall_best.value, solution.overall_best.point,
+        overall_best.value, overall_best.point,
     );
 
     // Save the plot

@@ -46,18 +46,22 @@ impl History {
         &self.median_function_values
     }
 
+    /// Always `Some` if `Self::update` has been called at least once
     pub fn current_best_individual(&self) -> Option<&Individual> {
         self.current_best_individual.as_ref()
     }
 
+    /// Always `Some` if `Self::update` has been called at least once
     pub fn overall_best_individual(&self) -> Option<&Individual> {
         self.overall_best_individual.as_ref()
     }
 
+    /// Always `Some` if `Self::update` has been called at least once
     pub fn first_median_function_value(&self) -> Option<f64> {
         self.first_median_function_value
     }
 
+    /// Always `Some` if `Self::update` has been called at least once
     pub fn best_median_function_value(&self) -> Option<f64> {
         self.best_median_function_value
     }

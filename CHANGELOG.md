@@ -17,6 +17,8 @@
 - Renamed `EqualFunValues` termination criterion to `TolFunHist` and added `tol_fun_hist` option to configure its range.
 - Added `TolFunRel` termination criterion to allow for a relative tolerance in function.
 - Renamed `Stagnation` to `TolStagnation` and added `tol_stagnation` option to configure its lower bound.
+- Fixed panic occurring when the algorithm immediately terminates with `InvalidFunctionValue`.
+- Changed the types of the `current_best` and `overall_best` fields of `TerminationData` from `Individual` to `Option<Individual>`.
 
 ## 0.1.1 (March 4th, 2022)
 
