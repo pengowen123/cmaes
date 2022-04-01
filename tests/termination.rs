@@ -101,7 +101,9 @@ fn test_tol_fun() {
     let function = |x: &DVector<f64>| 1.0 + x.magnitude().powi(2);
     run_test(
         function,
-        CMAESOptions::new(2).tol_fun_hist(0.0).initial_mean(vec![5.0; 2]),
+        CMAESOptions::new(2)
+            .tol_fun_hist(0.0)
+            .initial_mean(vec![5.0; 2]),
         |r| matches!(r, TerminationReason::TolFun),
         0,
     );
@@ -114,7 +116,9 @@ fn test_tol_fun_rel() {
     let function = |x: &DVector<f64>| 1.0 + x.magnitude().powi(2);
     run_test(
         function,
-        CMAESOptions::new(2).tol_fun_rel(1e-12).initial_mean(vec![1e6; 2]),
+        CMAESOptions::new(2)
+            .tol_fun_rel(1e-12)
+            .initial_mean(vec![1e6; 2]),
         |r| matches!(r, TerminationReason::TolFunRel),
         0,
     );
@@ -150,11 +154,17 @@ fn test_tol_stagnation() {
     let function = |x: &DVector<f64>| 1.0 + x.magnitude() + rand::random::<f64>() * 1e1;
 
     // Check that no panic occurs if tol_stagnation is 0
-    let _ = CMAESOptions::new(2).tol_stagnation(0).build(function).unwrap().run();
+    let _ = CMAESOptions::new(2)
+        .tol_stagnation(0)
+        .build(function)
+        .unwrap()
+        .run();
 
     run_test(
         function,
-        CMAESOptions::new(2).tol_stagnation(20).initial_mean(vec![5.0; 2]),
+        CMAESOptions::new(2)
+            .tol_stagnation(20)
+            .initial_mean(vec![5.0; 2]),
         |r| matches!(r, TerminationReason::TolStagnation),
         0,
     );
@@ -180,7 +190,11 @@ fn run_test_no_effect<F: Fn(TerminationReason) -> bool + Clone>(check_reason: F)
         |x: &DVector<f64>| 1e-8 + (2.0 * x[0] - x[1]).abs().powf(1.5) + (2.0 - x[1]).powi(2);
     run_test(
         function,
-        CMAESOptions::new(2).tol_fun(0.0).tol_fun_hist(0.0).tol_x(1e-16).initial_step_size(4.0),
+        CMAESOptions::new(2)
+            .tol_fun(0.0)
+            .tol_fun_hist(0.0)
+            .tol_x(1e-16)
+            .initial_step_size(4.0),
         check_reason,
         1,
     );

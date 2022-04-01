@@ -158,11 +158,11 @@ impl<'a> TerminationCheck<'a> {
                 result.push(TerminationReason::TolFun);
             }
 
-            if let (Some(first_median_value), Some(best_median_value))
-                = (self.first_median_value, self.best_median_value)
+            if let (Some(first_median_value), Some(best_median_value)) =
+                (self.first_median_value, self.best_median_value)
             {
-                let tol_fun_rel_range
-                    = tol_fun_rel_option * (first_median_value - best_median_value).abs();
+                let tol_fun_rel_range =
+                    tol_fun_rel_option * (first_median_value - best_median_value).abs();
 
                 if range_history < tol_fun_rel_range && range_current < tol_fun_rel_range {
                     result.push(TerminationReason::TolFunRel);
@@ -401,7 +401,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(1.0),
-            }.check_termination_criteria(),
+            }
+            .check_termination_criteria(),
             vec![TerminationReason::MaxFunctionEvals],
         );
     }
@@ -424,7 +425,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(1.0),
-            }.check_termination_criteria(),
+            }
+            .check_termination_criteria(),
             vec![TerminationReason::MaxGenerations],
         );
     }
@@ -448,7 +450,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(1.0),
-            }.check_termination_criteria(),
+            }
+            .check_termination_criteria(),
             vec![TerminationReason::MaxTime],
         );
     }
@@ -461,7 +464,7 @@ mod tests {
 
         assert!(TerminationCheck {
             current_function_evals: 0,
-            time_created:  Instant::now(),
+            time_created: Instant::now(),
             parameters: &get_parameters(initial_sigma, None, None, None, None),
             state: &state,
             best_function_value_history: &VecDeque::new(),
@@ -469,7 +472,9 @@ mod tests {
             first_median_value: Some(0.0),
             best_median_value: Some(0.0),
             individuals: &get_dummy_generation(1.0),
-       }.check_termination_criteria().is_empty());
+        }
+        .check_termination_criteria()
+        .is_empty());
     }
 
     #[test]
@@ -490,7 +495,7 @@ mod tests {
 
         assert!(TerminationCheck {
             current_function_evals: 0,
-            time_created:  Instant::now(),
+            time_created: Instant::now(),
             parameters: &get_parameters(initial_sigma, None, None, None, None),
             state: &state,
             best_function_value_history: &VecDeque::new(),
@@ -498,7 +503,9 @@ mod tests {
             first_median_value: Some(0.0),
             best_median_value: Some(0.0),
             individuals: &get_dummy_generation(1.0),
-       }.check_termination_criteria().is_empty());
+        }
+        .check_termination_criteria()
+        .is_empty());
     }
 
     #[test]
@@ -518,7 +525,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(1e-16),
-            }.check_termination_criteria(),
+            }
+            .check_termination_criteria(),
             vec![TerminationReason::FunTarget],
         );
     }
@@ -544,7 +552,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(best_function_value_history[0]),
-            }.check_termination_criteria(),
+            }
+            .check_termination_criteria(),
             vec![TerminationReason::TolFun],
         );
     }
@@ -576,7 +585,8 @@ mod tests {
                 first_median_value,
                 best_median_value,
                 individuals: &get_dummy_generation(best_function_value_history[0]),
-            }.check_termination_criteria(),
+            }
+            .check_termination_criteria(),
             vec![TerminationReason::TolFunRel],
         );
     }
@@ -602,7 +612,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(1.0),
-            }.check_termination_criteria(),
+            }
+            .check_termination_criteria(),
             vec![TerminationReason::TolFunHist],
         );
     }
@@ -626,7 +637,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(1.0),
-            }.check_termination_criteria(),
+            }
+            .check_termination_criteria(),
             vec![TerminationReason::TolX],
         );
     }
@@ -660,7 +672,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(1.0),
-            }.check_termination_criteria(),
+            }
+            .check_termination_criteria(),
             vec![TerminationReason::TolStagnation],
         );
     }
@@ -684,7 +697,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(1.0),
-            }.check_termination_criteria(),
+            }
+            .check_termination_criteria(),
             vec![TerminationReason::TolXUp],
         );
     }
@@ -721,7 +735,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(1.0),
-            }.check_termination_criteria();
+            }
+            .check_termination_criteria();
 
             if !termination_reasons.is_empty() {
                 assert_eq!(termination_reasons, vec![TerminationReason::NoEffectAxis]);
@@ -759,7 +774,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(1.0),
-            }.check_termination_criteria();
+            }
+            .check_termination_criteria();
 
             if !termination_reasons.is_empty() {
                 assert_eq!(termination_reasons, vec![TerminationReason::NoEffectCoord]);
@@ -795,7 +811,8 @@ mod tests {
                 first_median_value: Some(0.0),
                 best_median_value: Some(0.0),
                 individuals: &get_dummy_generation(1.0),
-            }.check_termination_criteria(),
+            }
+            .check_termination_criteria(),
             vec![TerminationReason::TolConditionCov],
         );
     }

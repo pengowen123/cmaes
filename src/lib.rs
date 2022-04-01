@@ -312,12 +312,12 @@ impl<'a> CMAES<'a> {
 
         let median_value = if individuals.len() % 2 == 0 {
             (individuals[individuals.len() / 2 - 1].value()
-                + individuals[individuals.len() / 2].value()) / 2.0
+                + individuals[individuals.len() / 2].value())
+                / 2.0
         } else {
             individuals[individuals.len() / 2].value()
         };
-        self.median_function_value_history
-            .push_front(median_value);
+        self.median_function_value_history.push_front(median_value);
         if self.median_function_value_history.len() > MAX_HISTORY_LENGTH {
             self.median_function_value_history.pop_back();
         }
@@ -398,7 +398,8 @@ impl<'a> CMAES<'a> {
             first_median_value: self.first_median_value,
             best_median_value: self.best_median_value,
             individuals: &individuals,
-        }.check_termination_criteria();
+        }
+        .check_termination_criteria();
 
         if !termination_reasons.is_empty() {
             Some(self.get_termination_data(termination_reasons))
