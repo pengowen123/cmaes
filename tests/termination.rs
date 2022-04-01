@@ -43,9 +43,7 @@ fn test_max_function_evals() {
     let function = |x: &DVector<f64>| x.magnitude().powi(2);
     run_test(
         function,
-        CMAESOptions::new(2)
-            .initial_mean(vec![5.0; 2])
-            .max_function_evals(100),
+        CMAESOptions::new(vec![5.0; 2], 1.0).max_function_evals(100),
         |r| matches!(r, TerminationReason::MaxFunctionEvals),
         0,
     );
@@ -57,9 +55,7 @@ fn test_max_generations() {
     let function = |x: &DVector<f64>| x.magnitude().powi(2);
     run_test(
         function,
-        CMAESOptions::new(2)
-            .initial_mean(vec![5.0; 2])
-            .max_generations(20),
+        CMAESOptions::new(vec![5.0; 2], 1.0).max_generations(20),
         |r| matches!(r, TerminationReason::MaxGenerations),
         0,
     );
@@ -72,12 +68,9 @@ fn test_max_time() {
         thread::sleep(Duration::from_millis(1));
         x.magnitude().powi(2)
     };
-    let dim = 2;
     run_test(
         function,
-        CMAESOptions::new(dim)
-            .initial_mean(vec![5.0; dim])
-            .max_time(Duration::from_millis(1)),
+        CMAESOptions::new(vec![5.0; 2], 1.0).max_time(Duration::from_millis(1)),
         |r| matches!(r, TerminationReason::MaxTime),
         0,
     );
@@ -89,7 +82,7 @@ fn test_fun_target() {
     let function = |x: &DVector<f64>| x.magnitude().powi(2);
     run_test(
         function,
-        CMAESOptions::new(2).initial_mean(vec![5.0; 2]),
+        CMAESOptions::new(vec![5.0; 2], 1.0),
         |r| matches!(r, TerminationReason::FunTarget),
         0,
     );
@@ -101,9 +94,7 @@ fn test_tol_fun() {
     let function = |x: &DVector<f64>| 1.0 + x.magnitude().powi(2);
     run_test(
         function,
-        CMAESOptions::new(2)
-            .tol_fun_hist(0.0)
-            .initial_mean(vec![5.0; 2]),
+        CMAESOptions::new(vec![5.0; 2], 1.0).tol_fun_hist(0.0),
         |r| matches!(r, TerminationReason::TolFun),
         0,
     );
@@ -116,9 +107,7 @@ fn test_tol_fun_rel() {
     let function = |x: &DVector<f64>| 1.0 + x.magnitude().powi(2);
     run_test(
         function,
-        CMAESOptions::new(2)
-            .tol_fun_rel(1e-12)
-            .initial_mean(vec![1e6; 2]),
+        CMAESOptions::new(vec![1e6; 2], 1.0).tol_fun_rel(1e-12),
         |r| matches!(r, TerminationReason::TolFunRel),
         0,
     );
@@ -130,7 +119,7 @@ fn test_tol_x() {
     let function = |x: &DVector<f64>| x.magnitude().sqrt();
     run_test(
         function,
-        CMAESOptions::new(2).initial_mean(vec![5.0; 2]),
+        CMAESOptions::new(vec![5.0; 2], 1.0),
         |r| matches!(r, TerminationReason::TolX),
         0,
     );
@@ -142,7 +131,7 @@ fn test_tol_fun_hist() {
     let function = |x: &DVector<f64>| x.magnitude().max(1e-6);
     run_test(
         function,
-        CMAESOptions::new(2).tol_fun(0.0).initial_mean(vec![5.0; 2]),
+        CMAESOptions::new(vec![5.0; 2], 1.0).tol_fun(0.0),
         |r| matches!(r, TerminationReason::TolFunHist),
         0,
     );
@@ -155,9 +144,7 @@ fn test_tol_stagnation() {
 
     run_test(
         function,
-        CMAESOptions::new(2)
-            .tol_stagnation(20)
-            .initial_mean(vec![5.0; 2]),
+        CMAESOptions::new(vec![5.0; 2], 1.0).tol_stagnation(20),
         |r| matches!(r, TerminationReason::TolStagnation),
         0,
     );
@@ -169,9 +156,7 @@ fn test_tol_x_up() {
     let function = |x: &DVector<f64>| x[0].powi(2) + x[1].powi(2);
     run_test(
         function,
-        CMAESOptions::new(2)
-            .initial_mean(vec![1e3; 2])
-            .initial_step_size(1e-9),
+        CMAESOptions::new(vec![1e3; 2], 1e-9),
         |r| matches!(r, TerminationReason::TolXUp),
         0,
     );
@@ -183,11 +168,10 @@ fn run_test_no_effect<F: Fn(TerminationReason) -> bool + Clone>(check_reason: F)
         |x: &DVector<f64>| 1e-8 + (2.0 * x[0] - x[1]).abs().powf(1.5) + (2.0 - x[1]).powi(2);
     run_test(
         function,
-        CMAESOptions::new(2)
+        CMAESOptions::new(vec![5.0; 2], 4.0)
             .tol_fun(0.0)
             .tol_fun_hist(0.0)
-            .tol_x(1e-16)
-            .initial_step_size(4.0),
+            .tol_x(1e-16),
         check_reason,
         1,
     );
@@ -222,7 +206,7 @@ fn test_tol_condition_cov() {
     let function = |x: &DVector<f64>| 0.1 + x[0].abs().powi(2) - (x[1] * 1e-14).abs().sqrt();
     run_test(
         function,
-        CMAESOptions::new(2).initial_step_size(1e3).tol_x(1e-12),
+        CMAESOptions::new(vec![5.0; 2], 1e3).tol_x(1e-12),
         |r| matches!(r, TerminationReason::TolConditionCov),
         1,
     );
@@ -234,7 +218,7 @@ fn test_invalid_function_value() {
     let function = |x: &DVector<f64>| x[0].sqrt() + x[1].sqrt();
     run_test(
         function,
-        CMAESOptions::new(2).initial_mean(vec![5.0; 2]),
+        CMAESOptions::new(vec![5.0; 2], 1.0),
         |r| matches!(r, TerminationReason::InvalidFunctionValue),
         0,
     );

@@ -17,12 +17,10 @@ fn main() {
     // The search space can be scaled in each dimension
     let mut function = Scale::new(function, vec![2.0; dim]);
 
-    let mut cmaes_state = CMAESOptions::new(dim)
+    let mut cmaes_state = CMAESOptions::new(vec![0.1; dim], 0.1)
         .weights(Weights::Positive)
         .fun_target(1e-10)
         .tol_x(1e-13)
-        .initial_step_size(0.1)
-        .initial_mean(vec![0.1; dim])
         .max_generations(10_000)
         .max_function_evals(100_000)
         .max_time(Duration::from_secs(5))

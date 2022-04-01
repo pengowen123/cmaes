@@ -14,9 +14,8 @@
 //! let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
 //!
 //! let dim = 10;
-//! let mut cmaes_state = CMAESOptions::new(dim)
+//! let mut cmaes_state = CMAESOptions::new(vec![1.0; dim], 1.0)
 //!     .fun_target(1e-8)
-//!     .initial_mean(vec![1.0; dim])
 //!     .enable_printing(200)
 //!     .max_generations(20000)
 //!     .build(sphere)
@@ -139,7 +138,7 @@ pub struct TerminationData {
 ///     x += 1.0;
 ///     x
 /// };
-/// let cmaes_state = CMAESOptions::new(2).build(function).unwrap();
+/// let cmaes_state = CMAESOptions::new(vec![0.0; 2], 1.0).build(function).unwrap();
 /// let container = Container(cmaes_state);
 /// ```
 pub struct CMAES<'a> {
@@ -169,13 +168,10 @@ impl<'a> CMAES<'a> {
         objective_function: Box<dyn ObjectiveFunction + 'a>,
         options: CMAESOptions,
     ) -> Result<Self, InvalidOptionsError> {
+        let dimensions = options.initial_mean.len();
         // Check for invalid options
-        if options.dimensions == 0 {
+        if dimensions == 0 {
             return Err(InvalidOptionsError::Dimensions);
-        }
-
-        if options.dimensions != options.initial_mean.len() {
-            return Err(InvalidOptionsError::MeanDimensionMismatch);
         }
 
         if options.population_size < 4 {
@@ -193,7 +189,7 @@ impl<'a> CMAES<'a> {
         // Initialize point sampler
         let seed = options.seed.unwrap_or_else(rand::random);
         let sampler = Sampler::new(
-            options.dimensions,
+            dimensions,
             options.population_size,
             objective_function,
             seed,
@@ -201,10 +197,8 @@ impl<'a> CMAES<'a> {
 
         // Initialize constant parameters according to the options
         let tol_x = options.tol_x.unwrap_or(1e-12 * options.initial_step_size);
-        let default_tol_stagnation = termination::get_default_tol_stagnation_option(
-            options.dimensions,
-            options.population_size,
-        );
+        let default_tol_stagnation =
+            termination::get_default_tol_stagnation_option(dimensions, options.population_size);
         let tol_stagnation = options.tol_stagnation.unwrap_or(default_tol_stagnation);
         let termination_parameters = TerminationParameters {
             max_function_evals: options.max_function_evals,
@@ -220,7 +214,7 @@ impl<'a> CMAES<'a> {
             tol_condition_cov: options.tol_condition_cov,
         };
         let parameters = Parameters::new(
-            options.dimensions,
+            dimensions,
             options.population_size,
             options.weights,
             seed,
@@ -236,9 +230,7 @@ impl<'a> CMAES<'a> {
         let history = History::new();
 
         // Initialize plot if enabled
-        let plot = options
-            .plot_options
-            .map(|o| Plot::new(options.dimensions, o));
+        let plot = options.plot_options.map(|o| Plot::new(dimensions, o));
 
         let mut cmaes = Self {
             sampler,
@@ -578,7 +570,9 @@ mod tests {
 
     #[test]
     fn test_get_best_individuals() {
-        let mut cmaes = CMAESOptions::new(10).build(dummy_function).unwrap();
+        let mut cmaes = CMAESOptions::new(vec![0.0; 10], 1.0)
+            .build(dummy_function)
+            .unwrap();
 
         assert!(cmaes.current_best_individual().is_none());
         assert!(cmaes.overall_best_individual().is_none());
@@ -592,7 +586,9 @@ mod tests {
     #[test]
     fn test_immediate_termination() {
         let function = |_: &DVector<f64>| f64::NAN;
-        let mut cmaes = CMAESOptions::new(10).build(function).unwrap();
+        let mut cmaes = CMAESOptions::new(vec![0.0; 10], 1.0)
+            .build(function)
+            .unwrap();
 
         let result = cmaes.run();
 
@@ -605,7 +601,7 @@ mod tests {
     #[test]
     fn test_run_final_plot() {
         let evals_per_plot_point = 100;
-        let mut cmaes = CMAESOptions::new(10)
+        let mut cmaes = CMAESOptions::new(vec![0.0; 10], 1.0)
             .enable_plot(PlotOptions::new(evals_per_plot_point, false))
             .max_generations(1)
             .build(|_: &DVector<f64>| 0.0)

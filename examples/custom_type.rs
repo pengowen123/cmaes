@@ -40,9 +40,7 @@ fn main() {
     {
         // Customize parameters for the problem
         let dim = 2;
-        let mut cmaes_state = CMAESOptions::new(dim)
-            .initial_step_size(0.1)
-            .initial_mean(vec![0.1; dim])
+        let mut cmaes_state = CMAESOptions::new(vec![0.1; dim], 0.1)
             .enable_printing(200)
             // Use a mutable reference to the function so its state can be retrieved easily later
             .build(&mut function)

@@ -13,12 +13,13 @@ use crate::{ObjectiveFunction, PlotOptions, CMAES};
 /// # Examples
 ///
 /// ```
-/// # use cmaes::{CMAESOptions, DVector, PlotOptions};
+/// use cmaes::{CMAESOptions, DVector, PlotOptions, Weights};
+///
 /// let function = |x: &DVector<f64>| x.magnitude();
 /// let dim = 3;
-/// let mut cmaes_state = CMAESOptions::new(dim)
-///     .initial_mean(vec![2.0; dim])
-///     .initial_step_size(5.0)
+/// let mut cmaes_state = CMAESOptions::new(vec![2.0; dim], 5.0)
+///     .weights(Weights::Positive)
+///     .population_size(100)
 ///     .enable_plot(PlotOptions::new(0, false))
 ///     .enable_printing(200)
 ///     .build(function)
@@ -26,13 +27,11 @@ use crate::{ObjectiveFunction, PlotOptions, CMAES};
 /// ```
 #[derive(Clone)]
 pub struct CMAESOptions {
-    /// Number of dimensions to search (`N`).
-    pub dimensions: usize,
-    /// Initial mean of the search distribution. This should be set to a first guess at the
-    /// solution. Default value is the origin.
+    /// Initial mean of the search distribution, also used to determine the problem dimension (`N`).
+    /// This should be set to a first guess at the solution.
     pub initial_mean: DVector<f64>,
     /// Initial step size of the search distribution (`sigma0`). This should be set to a first guess
-    /// at how far the solution is from the initial mean. Default value is `0.5`.
+    /// at how far the solution is from the initial mean.
     pub initial_step_size: f64,
     /// Number of points to generate each generation (`lambda`). Default value is
     /// `4 + floor(3 * ln(dimensions))`.
@@ -106,11 +105,18 @@ pub struct CMAESOptions {
 impl CMAESOptions {
     /// Creates a new `CMAESOptions` with default values. Set individual options using the provided
     /// methods.
-    pub fn new(dimensions: usize) -> Self {
+    ///
+    /// - `initial_mean` should be set to a first guess at the solution and is used to determine the
+    /// problem dimension.
+    /// - `initial_step_size` should be set to a first guess at how far the solution is in each
+    /// dimension from the initial mean (`solution[i] ~= [initial_mean[i] - initial_step_size,
+    /// initial_mean[i] + initial_step_size]`). Must be positive.
+    pub fn new<V: Into<DVector<f64>>>(initial_mean: V, initial_step_size: f64) -> Self {
+        let initial_mean = initial_mean.into();
+        let dimensions = initial_mean.len();
         Self {
-            dimensions,
-            initial_mean: DVector::zeros(dimensions),
-            initial_step_size: 0.5,
+            initial_mean,
+            initial_step_size,
             population_size: 4 + (3.0 * (dimensions as f64).ln()).floor() as usize,
             weights: Weights::Negative,
             cm: 1.0,
@@ -131,13 +137,13 @@ impl CMAESOptions {
         }
     }
 
-    /// Changes the initial mean from the origin.
+    /// Changes the initial mean.
     pub fn initial_mean<V: Into<DVector<f64>>>(mut self, initial_mean: V) -> Self {
         self.initial_mean = initial_mean.into();
         self
     }
 
-    /// Changes the initial step size from the default value. Must be positive.
+    /// Changes the initial step size. Must be positive.
     pub fn initial_step_size(mut self, initial_step_size: f64) -> Self {
         self.initial_step_size = initial_step_size;
         self
@@ -276,8 +282,6 @@ impl CMAESOptions {
 pub enum InvalidOptionsError {
     /// The number of dimensions is set to zero.
     Dimensions,
-    /// The dimension of the initial mean does not match the chosen dimension.
-    MeanDimensionMismatch,
     /// The population size is too small (must be at least 4).
     PopulationSize,
     /// The initial step size is negative or non-normal.
@@ -293,55 +297,53 @@ mod tests {
     #[test]
     fn test_build() {
         let dummy_function = |_: &DVector<f64>| 0.0;
-        assert!(CMAESOptions::new(5).build(dummy_function).is_ok());
+        assert!(CMAESOptions::new(vec![1.0; 5], 1.0)
+            .build(dummy_function)
+            .is_ok());
         assert!(matches!(
-            CMAESOptions::new(5)
+            CMAESOptions::new(vec![1.0; 5], 1.0)
                 .population_size(3)
                 .build(dummy_function),
             Err(InvalidOptionsError::PopulationSize),
         ));
         assert!(matches!(
-            CMAESOptions::new(5)
-                .initial_step_size(-1.0)
-                .build(dummy_function),
+            CMAESOptions::new(vec![1.0; 5], -1.0).build(dummy_function),
             Err(InvalidOptionsError::InitialStepSize),
         ));
         assert!(matches!(
-            CMAESOptions::new(5)
-                .initial_step_size(f64::NAN)
-                .build(dummy_function),
+            CMAESOptions::new(vec![1.0; 5], f64::NAN).build(dummy_function),
             Err(InvalidOptionsError::InitialStepSize),
         ));
         assert!(matches!(
-            CMAESOptions::new(5)
-                .initial_step_size(f64::INFINITY)
-                .build(dummy_function),
+            CMAESOptions::new(vec![1.0; 5], f64::INFINITY).build(dummy_function),
             Err(InvalidOptionsError::InitialStepSize),
         ));
         assert!(matches!(
-            CMAESOptions::new(5)
-                .initial_mean(vec![1.0; 2])
-                .build(dummy_function),
-            Err(InvalidOptionsError::MeanDimensionMismatch),
-        ));
-        assert!(matches!(
-            CMAESOptions::new(0).build(dummy_function),
+            CMAESOptions::new(vec![], 1.0).build(dummy_function),
             Err(InvalidOptionsError::Dimensions),
         ));
         assert!(matches!(
-            CMAESOptions::new(5).cm(2.0).build(dummy_function),
+            CMAESOptions::new(vec![1.0; 5], 1.0)
+                .cm(2.0)
+                .build(dummy_function),
             Err(InvalidOptionsError::Cm),
         ));
         assert!(matches!(
-            CMAESOptions::new(5).cm(-1.0).build(dummy_function),
+            CMAESOptions::new(vec![1.0; 5], 1.0)
+                .cm(-1.0)
+                .build(dummy_function),
             Err(InvalidOptionsError::Cm),
         ));
         assert!(matches!(
-            CMAESOptions::new(5).cm(f64::NAN).build(dummy_function),
+            CMAESOptions::new(vec![1.0; 5], 1.0)
+                .cm(f64::NAN)
+                .build(dummy_function),
             Err(InvalidOptionsError::Cm),
         ));
         assert!(matches!(
-            CMAESOptions::new(5).cm(f64::INFINITY).build(dummy_function),
+            CMAESOptions::new(vec![1.0; 5], 1.0)
+                .cm(f64::INFINITY)
+                .build(dummy_function),
             Err(InvalidOptionsError::Cm),
         ));
     }

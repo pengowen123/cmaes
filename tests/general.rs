@@ -66,10 +66,7 @@ fn run_test<F: ObjectiveFunction + Clone + 'static>(
 #[test]
 fn test_sphere() {
     let run_test_sphere = |dim, pop_size_mult, max_avg_evals, max_failures, weights| {
-        let mut options = CMAESOptions::new(dim)
-            .initial_step_size(0.1)
-            .initial_mean(vec![0.1; dim])
-            .weights(weights);
+        let mut options = CMAESOptions::new(vec![0.1; dim], 0.1).weights(weights);
         options.population_size *= pop_size_mult;
 
         run_test(sphere, options, max_avg_evals, max_failures);
@@ -85,10 +82,7 @@ fn test_sphere() {
 #[test]
 fn test_ellipsoid() {
     let run_test_ellipsoid = |dim, pop_size_mult, max_avg_evals, max_failures, weights| {
-        let mut options = CMAESOptions::new(dim)
-            .initial_step_size(0.1)
-            .initial_mean(vec![0.1; dim])
-            .weights(weights);
+        let mut options = CMAESOptions::new(vec![0.1; dim], 0.1).weights(weights);
         options.population_size *= pop_size_mult;
 
         run_test(ellipsoid, options, max_avg_evals, max_failures);
@@ -108,10 +102,7 @@ fn run_test_rosenbrock(
     max_failures: usize,
     weights: Weights,
 ) {
-    let mut options = CMAESOptions::new(dim)
-        .initial_step_size(0.1)
-        .initial_mean(vec![0.1; dim])
-        .weights(weights);
+    let mut options = CMAESOptions::new(vec![0.1; dim], 0.1).weights(weights);
     options.population_size *= pop_size_mult;
 
     run_test(rosenbrock, options, max_avg_evals, max_failures);
@@ -130,10 +121,7 @@ fn test_rosenbrock() {
 #[test]
 fn test_rastrigin() {
     let run_test_rastrigin = |dim, pop_size_mult, max_avg_evals, max_failures, weights| {
-        let mut options = CMAESOptions::new(dim)
-            .initial_step_size(5.0)
-            .initial_mean(vec![5.0; dim])
-            .weights(weights);
+        let mut options = CMAESOptions::new(vec![5.0; dim], 5.0).weights(weights);
         options.population_size *= pop_size_mult;
 
         run_test(rastrigin, options, max_avg_evals, max_failures);
@@ -147,10 +135,7 @@ fn test_rastrigin() {
 #[test]
 fn test_cigar() {
     let run_test_cigar = |dim, pop_size_mult, max_avg_evals, max_failures, weights| {
-        let mut options = CMAESOptions::new(dim)
-            .initial_step_size(0.1)
-            .initial_mean(vec![0.1; dim])
-            .weights(weights);
+        let mut options = CMAESOptions::new(vec![0.1; dim], 0.1).weights(weights);
         options.population_size *= pop_size_mult;
 
         run_test(cigar, options.clone(), max_avg_evals, max_failures);
@@ -168,11 +153,10 @@ fn test_cigar() {
 fn test_fixed_seed() {
     let function = rosenbrock;
     let seed = 76561199230847669;
-    let dimension = 4;
+    let dim = 4;
     let population_size = 12;
-    let mut cmaes_state = CMAESOptions::new(dimension)
+    let mut cmaes_state = CMAESOptions::new(vec![0.0; dim], 5.0)
         .population_size(population_size)
-        .initial_step_size(5.0)
         .seed(seed)
         .build(function)
         .unwrap();
@@ -180,7 +164,7 @@ fn test_fixed_seed() {
     let params = cmaes_state.parameters();
 
     let eps = 1e-12;
-    assert_eq!(params.dim(), dimension);
+    assert_eq!(params.dim(), dim);
     assert_eq!(params.lambda(), population_size);
     assert_eq!(params.mu(), 6);
     assert_approx_eq!(params.initial_sigma(), 5.0, eps);
@@ -291,24 +275,30 @@ mod consistent {
             x
         };
 
-        let _ = CMAESOptions::new(5)
+        let _ = CMAESOptions::new(vec![0.0; 5], 1.0)
             .build(&mut non_static_function)
             .unwrap();
-        let non_static_state = CMAESOptions::new(5).build(non_static_function).unwrap();
+        let non_static_state = CMAESOptions::new(vec![0.0; 5], 1.0)
+            .build(non_static_function)
+            .unwrap();
 
         // Storing a CMAES with a static objective function without dealing with lifetimes
         struct StaticContainer(CMAES<'static>);
 
         let static_function = |x: &DVector<f64>| x.magnitude();
 
-        let static_state = CMAESOptions::new(5).build(static_function).unwrap();
+        let static_state = CMAESOptions::new(vec![0.0; 5], 1.0)
+            .build(static_function)
+            .unwrap();
         StaticContainer(static_state);
 
         // Storing a CMAES with any lifetime
         struct NonStaticContainer<'a>(CMAES<'a>);
         NonStaticContainer(non_static_state);
 
-        let static_state = CMAESOptions::new(5).build(static_function).unwrap();
+        let static_state = CMAESOptions::new(vec![0.0; 5], 1.0)
+            .build(static_function)
+            .unwrap();
         NonStaticContainer(static_state);
     }
 

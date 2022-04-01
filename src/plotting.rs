@@ -186,7 +186,7 @@ impl PlotOptions {
 /// use cmaes::{CMAESOptions, DVector, PlotOptions};
 ///
 /// let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
-/// let mut state = CMAESOptions::new(10)
+/// let mut state = CMAESOptions::new(vec![1.0; 10], 1.0)
 ///     .enable_plot(PlotOptions::new(0, false))
 ///     .build(sphere)
 ///     .unwrap();
@@ -757,13 +757,16 @@ mod tests {
 
     #[test]
     fn test_plot_not_enabled() {
-        let state = CMAESOptions::new(10).build(|_: &DVector<f64>| 0.0).unwrap();
+        let state = CMAESOptions::new(vec![1.0; 10], 1.0)
+            .build(|_: &DVector<f64>| 0.0)
+            .unwrap();
+
         assert!(state.get_plot().is_none());
     }
 
     #[test]
     fn test_plot_empty() {
-        let state = CMAESOptions::new(10)
+        let state = CMAESOptions::new(vec![1.0; 10], 1.0)
             .enable_plot(PlotOptions::new(0, false))
             .build(|_: &DVector<f64>| 0.0)
             .unwrap();
@@ -775,7 +778,7 @@ mod tests {
 
     #[test]
     fn test_plot() {
-        let mut state = CMAESOptions::new(10)
+        let mut state = CMAESOptions::new(vec![1.0; 10], 1.0)
             .enable_plot(PlotOptions::new(0, false))
             .build(|_: &DVector<f64>| 0.0)
             .unwrap();
@@ -790,7 +793,7 @@ mod tests {
 
     #[test]
     fn test_redundant_plot() {
-        let mut state = CMAESOptions::new(10)
+        let mut state = CMAESOptions::new(vec![1.0; 10], 1.0)
             .enable_plot(PlotOptions::new(0, false))
             .build(|_: &DVector<f64>| 0.0)
             .unwrap();
@@ -805,7 +808,7 @@ mod tests {
 
     #[test]
     fn test_plot_clear() {
-        let mut state = CMAESOptions::new(10)
+        let mut state = CMAESOptions::new(vec![0.0; 10], 1.0)
             .enable_plot(PlotOptions::new(0, false))
             .build(|_: &DVector<f64>| 0.0)
             .unwrap();

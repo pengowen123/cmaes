@@ -24,7 +24,7 @@ use nalgebra::DVector;
 ///     n
 /// };
 ///
-/// let mut state = CMAESOptions::new(2).build(baz).unwrap();
+/// let mut state = CMAESOptions::new(vec![0.0; 2], 1.0).build(baz).unwrap();
 /// ```
 ///
 /// Or be references themselves:
@@ -36,7 +36,7 @@ use nalgebra::DVector;
 /// #     n += 1.0;
 /// #     n
 /// # };
-/// let mut state = CMAESOptions::new(2).build(&mut baz).unwrap();
+/// let mut state = CMAESOptions::new(vec![0.0; 2], 1.0).build(&mut baz).unwrap();
 /// ```
 ///
 /// The trait may also be implemented for custom types:
@@ -65,7 +65,7 @@ use nalgebra::DVector;
 /// let mut custom = Custom { counter: 0.0 };
 ///
 /// {
-///     let mut cmaes_state = CMAESOptions::new(2).build(&mut custom).unwrap();
+///     let mut cmaes_state = CMAESOptions::new(vec![0.0; 2], 1.0).build(&mut custom).unwrap();
 ///     cmaes_state.run();
 /// }
 ///
@@ -100,7 +100,7 @@ impl<F: FnMut(&DVector<f64>) -> f64> ObjectiveFunction for F {
 /// let mut function = |x: &DVector<f64>| x.iter().sum();
 /// let scale = Scale::new(function, vec![0.2, 0.2, 1.0]);
 ///
-/// let mut state = CMAESOptions::new(2).build(scale).unwrap();
+/// let mut state = CMAESOptions::new(vec![0.0; 2], 1.0).build(scale).unwrap();
 /// ```
 #[derive(Clone)]
 pub struct Scale<F> {
