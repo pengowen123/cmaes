@@ -16,6 +16,7 @@
 - Added `MaxTime` termination criterion to limit the running time of the algorithm.
 - Renamed `EqualFunValues` termination criterion to `TolFunHist` and added `tol_fun_hist` option to configure its range.
 - Added `TolFunRel` termination criterion to allow for a relative tolerance in function.
+- Renamed `Stagnation` to `TolStagnation` and added `tol_stagnation` option to configure its lower bound.
 
 ## 0.1.1 (March 4th, 2022)
 
