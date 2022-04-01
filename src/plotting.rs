@@ -20,8 +20,9 @@ use std::io;
 use std::ops::Range;
 use std::path::Path;
 
+use crate::history::History;
 use crate::state::State;
-use crate::{utils, Individual};
+use crate::utils;
 
 /// The drawing backend to use for rendering the plot.
 pub type Backend<'a> = BitMapBackend<'a>;
@@ -81,14 +82,10 @@ impl PlotData {
     }
 
     /// Adds a data point to the plot from the current state
-    fn add_data_point(
-        &mut self,
-        current_function_evals: usize,
-        state: &State,
-        current_best_individual: Option<&Individual>,
-    ) {
+    fn add_data_point(&mut self, current_function_evals: usize, state: &State, history: &History) {
         self.function_evals.push(current_function_evals);
-        let best_function_value = current_best_individual
+        let best_function_value = history
+            .current_best_individual()
             .map(|x| x.value)
             // At 0 function evals there isn't a best individual yet, so assign it NAN and filter it
             // later
@@ -241,7 +238,7 @@ impl Plot {
         &mut self,
         current_function_evals: usize,
         state: &State,
-        current_best_individual: Option<&Individual>,
+        history: &History,
     ) {
         let already_added = match self.last_data_point_generation {
             Some(generation) => generation == state.generation(),
@@ -249,7 +246,7 @@ impl Plot {
         };
         if !already_added {
             self.data
-                .add_data_point(current_function_evals, state, current_best_individual);
+                .add_data_point(current_function_evals, state, history);
             self.last_data_point_evals = Some(current_function_evals);
             self.last_data_point_generation = Some(state.generation());
         }
