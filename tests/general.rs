@@ -149,8 +149,7 @@ fn test_cigar() {
 }
 
 // Must be updated after every change to the algorithm (after thorough testing)
-#[test]
-fn test_fixed_seed() {
+fn fixed_seed(use_threads: bool) {
     let function = rosenbrock;
     let seed = 76561199230847669;
     let dim = 4;
@@ -205,7 +204,11 @@ fn test_fixed_seed() {
 
     let generations = 10;
     for _ in 0..generations {
-        let _ = cmaes_state.next();
+        let _ = if use_threads {
+            cmaes_state.next_parallel()
+        } else {
+            cmaes_state.next()
+        };
     }
 
     assert_eq!(cmaes_state.generation(), generations);
@@ -259,6 +262,17 @@ fn test_fixed_seed() {
     }
 
     assert_approx_eq!(overall_best.value, 32.859092832300654, eps);
+}
+
+#[test]
+fn test_fixed_seed() {
+    fixed_seed(false);
+}
+
+// Check that using threads doesn't affect the results
+#[test]
+fn test_fixed_seed_parallel() {
+    fixed_seed(true);
 }
 
 /// For tests with consistent results

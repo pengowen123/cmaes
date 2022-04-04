@@ -1,11 +1,12 @@
-//! A trait for types that can be used as an objective function, as well as wrapper types that
+//! Traits for types that can be used as an objective function, as well as wrapper types that
 //! modify the behavior of objective functions.
 
 use nalgebra::DVector;
 
-/// A trait for types that can be used as an objective function. This trait is implemented for
-/// functions and closures with the correct signature, so the following can all be used in a
-/// [`CMAES`][crate::CMAES]:
+/// A trait for types that can be used as an objective function.
+///
+/// This trait is implemented for functions and closures with the correct signature, so the
+/// following can all be used in a [`CMAES`][crate::CMAES]:
 ///
 /// ```
 /// use cmaes::DVector;
@@ -72,6 +73,9 @@ use nalgebra::DVector;
 ///
 /// Wrapper types for modifying objective functions are provided in the
 /// [`objective_function`][crate::objective_function] module, and more can be implemented manually.
+///
+/// For objective functions that can be executed in parallel, see
+/// [`ParallelObjectiveFunction`][ParallelObjectiveFunction].
 pub trait ObjectiveFunction {
     fn evaluate(&mut self, x: &DVector<f64>) -> f64;
 }
@@ -88,6 +92,85 @@ impl ObjectiveFunction for Box<dyn ObjectiveFunction> {
     }
 }
 
+/// Like [`ObjectiveFunction`][ObjectiveFunction], but for objective functions that can be executed
+/// in parallel.
+///
+/// The key difference is that it requires [`Sync`][std::marker::Sync] and has a `&self` parameter
+/// instead of `&mut self`, meaning that mutable state cannot be used except for with interior
+/// mutability, such as through [`Mutex`][std::sync::Mutex] or [atomic types][std::sync::atomic].
+///
+/// The trait is implemented for functions and closures with the correct signature, so the following
+/// can all be used in a [`CMAES`][crate::CMAES]:
+///
+/// ```
+/// use cmaes::DVector;
+///
+/// fn foo(x: &DVector<f64>) -> f64 { x.magnitude()  }
+/// let bar = |x: &DVector<f64>| x.magnitude();
+/// ```
+///
+/// It can also be implemented for custom types:
+///
+/// ```
+/// use cmaes::{CMAESOptions, DVector, ObjectiveFunction, ParallelObjectiveFunction};
+///
+/// use std::sync::atomic::{AtomicUsize, Ordering};
+///
+/// struct Custom {
+///     counter: AtomicUsize,
+/// }
+///
+/// impl ParallelObjectiveFunction for Custom {
+///     fn evaluate_parallel(&self, x: &DVector<f64>) -> f64 {
+///         // Interior mutability must be used to modify any state
+///         self.counter.fetch_add(1, Ordering::SeqCst);
+///         x.magnitude()
+///     }
+/// }
+///
+/// impl<'a> ParallelObjectiveFunction for &'a Custom {
+///     fn evaluate_parallel(&self, x: &DVector<f64>) -> f64 {
+///         Custom::evaluate_parallel(*self, x)
+///     }
+/// }
+///
+/// // `ObjectiveFunction` can be implemented as well for use with `CMAES::run`
+/// impl ObjectiveFunction for Custom {
+///     fn evaluate(&mut self, x: &DVector<f64>) -> f64 {
+///         self.evaluate_parallel(x)
+///     }
+/// }
+///
+/// impl<'a> ObjectiveFunction for &'a mut Custom {
+///     fn evaluate(&mut self, x: &DVector<f64>) -> f64 {
+///         self.evaluate_parallel(x)
+///     }
+/// }
+///
+/// // The objective function's state can be retrieved after optimization
+/// let custom = Custom { counter: 0.into() };
+///
+/// let mut cmaes_state = CMAESOptions::new(vec![0.0; 2], 1.0).build(&custom).unwrap();
+/// let solution = cmaes_state.run_parallel();
+///
+/// println!("{}", custom.counter.load(Ordering::SeqCst));
+/// ```
+pub trait ParallelObjectiveFunction: Sync {
+    fn evaluate_parallel(&self, x: &DVector<f64>) -> f64;
+}
+
+impl<F: Sync + Fn(&DVector<f64>) -> f64> ParallelObjectiveFunction for F {
+    fn evaluate_parallel(&self, x: &DVector<f64>) -> f64 {
+        (self)(x)
+    }
+}
+
+impl ParallelObjectiveFunction for Box<dyn ParallelObjectiveFunction> {
+    fn evaluate_parallel(&self, x: &DVector<f64>) -> f64 {
+        self.as_ref().evaluate_parallel(x)
+    }
+}
+
 /// A type that wraps any [`ObjectiveFunction`] and scales the input vectors before passing them to
 /// the wrapped function.
 ///
@@ -101,7 +184,7 @@ impl ObjectiveFunction for Box<dyn ObjectiveFunction> {
 /// # use cmaes::{CMAESOptions, DVector};
 /// use cmaes::objective_function::Scale;
 ///
-/// let mut function = |x: &DVector<f64>| x.iter().sum();
+/// let mut function = |x: &DVector<f64>| x.magnitude();
 /// let scale = Scale::new(function, vec![0.2, 0.2, 1.0]);
 ///
 /// let mut state = CMAESOptions::new(vec![0.0; 2], 1.0).build(scale).unwrap();
@@ -112,7 +195,7 @@ pub struct Scale<F> {
     scales: DVector<f64>,
 }
 
-impl<F: ObjectiveFunction> Scale<F> {
+impl<F> Scale<F> {
     /// Returns a new `Scale`, wrapping `function` and multiplying each dimension of its inputs by
     /// the respective element of `scales`.
     pub fn new<S: Into<DVector<f64>>>(function: F, scales: S) -> Self {
@@ -148,6 +231,19 @@ impl<F: ObjectiveFunction> ObjectiveFunction for Scale<F> {
 impl<'a, F: ObjectiveFunction> ObjectiveFunction for &'a mut Scale<F> {
     fn evaluate(&mut self, x: &DVector<f64>) -> f64 {
         ObjectiveFunction::evaluate(*self, x)
+    }
+}
+
+impl<F: ParallelObjectiveFunction> ParallelObjectiveFunction for Scale<F> {
+    fn evaluate_parallel(&self, x: &DVector<f64>) -> f64 {
+        let scaled = self.scale(x);
+        self.function.evaluate_parallel(&scaled)
+    }
+}
+
+impl<'a, F: ParallelObjectiveFunction> ParallelObjectiveFunction for &'a Scale<F> {
+    fn evaluate_parallel(&self, x: &DVector<f64>) -> f64 {
+        ParallelObjectiveFunction::evaluate_parallel(*self, x)
     }
 }
 

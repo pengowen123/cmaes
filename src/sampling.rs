@@ -4,10 +4,11 @@ use nalgebra::DVector;
 use rand::distributions::Distribution;
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
+use rayon::prelude::*;
 use statrs::distribution::Normal;
 
 use crate::state::State;
-use crate::{utils, ObjectiveFunction};
+use crate::{utils, ObjectiveFunction, ParallelObjectiveFunction};
 
 /// A type for sampling and evaluating points from the distribution for each generation
 pub struct Sampler<F> {
@@ -23,7 +24,7 @@ pub struct Sampler<F> {
     function_evals: usize,
 }
 
-impl<F: ObjectiveFunction> Sampler<F> {
+impl<F> Sampler<F> {
     pub fn new(dim: usize, population_size: usize, objective_function: F, rng_seed: u64) -> Self {
         Self {
             dim,
@@ -34,13 +35,13 @@ impl<F: ObjectiveFunction> Sampler<F> {
         }
     }
 
-    /// Samples and returns a new generation of points, sorted in ascending order by their
-    /// corresponding objective function values
-    ///
-    /// Returns Err if the objective function returned an invalid value
-    pub fn sample(
+    /// Shared logic between `sample` and `sample_parallel`
+    fn sample_internal<
+        P: Fn(Vec<DVector<f64>>, &mut F) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError>,
+    >(
         &mut self,
         state: &State,
+        evaluate_points: P,
     ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
         let normal = Normal::new(0.0, 1.0).unwrap();
 
@@ -52,19 +53,11 @@ impl<F: ObjectiveFunction> Sampler<F> {
                     (0..self.dim).map(|_| normal.sample(&mut self.rng)),
                 )
             })
-            .map(|zk| state.cov_eigenvectors() * state.cov_sqrt_eigenvalues() * zk);
+            .map(|zk| state.cov_eigenvectors() * state.cov_sqrt_eigenvalues() * zk)
+            .collect();
 
         // Evaluate and rank points
-        let mut points = y
-            .map(|yk| {
-                EvaluatedPoint::new(
-                    yk,
-                    state.mean(),
-                    state.sigma(),
-                    &mut self.objective_function,
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut points = evaluate_points(y, &mut self.objective_function)?;
 
         self.function_evals += points.len();
 
@@ -79,6 +72,45 @@ impl<F: ObjectiveFunction> Sampler<F> {
     /// Consumes `self` and returns the objective function
     pub fn into_objective_function(self) -> F {
         self.objective_function
+    }
+}
+
+impl<F: ObjectiveFunction> Sampler<F> {
+    /// Samples and returns a new generation of points, sorted in ascending order by their
+    /// corresponding objective function values
+    ///
+    /// Returns Err if the objective function returned an invalid value
+    pub fn sample(
+        &mut self,
+        state: &State,
+    ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
+        self.sample_internal(state, |y, objective_function| {
+            y.into_iter()
+                .map(|yk| {
+                    EvaluatedPoint::new(yk, state.mean(), state.sigma(), |x| {
+                        objective_function.evaluate(x)
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+    }
+}
+
+impl<F: ParallelObjectiveFunction> Sampler<F> {
+    /// Like `sample`, but evaluates the sampled points using multiple threads
+    pub fn sample_parallel(
+        &mut self,
+        state: &State,
+    ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
+        self.sample_internal(state, |y, objective_function| {
+            y.into_par_iter()
+                .map(|yk| {
+                    EvaluatedPoint::new(yk, state.mean(), state.sigma(), |x| {
+                        objective_function.evaluate_parallel(x)
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
     }
 }
 
@@ -99,14 +131,14 @@ impl EvaluatedPoint {
     /// the step size
     ///
     /// Returns `Err` if the objective function returned an invalid value
-    pub fn new<'a, F: ObjectiveFunction + ?Sized + 'a>(
+    pub fn new<F: FnMut(&DVector<f64>) -> f64>(
         step: DVector<f64>,
         mean: &DVector<f64>,
         sigma: f64,
-        objective_function: &mut F,
+        mut objective_function: F,
     ) -> Result<Self, InvalidFunctionValueError> {
         let point = mean + sigma * &step;
-        let value = objective_function.evaluate(&point);
+        let value = objective_function(&point);
 
         if value.is_nan() {
             Err(InvalidFunctionValueError)

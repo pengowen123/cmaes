@@ -5,8 +5,8 @@
 //! # Quick Start
 //!
 //! To optimize a function, simply create and build a [`CMAESOptions`] and call
-//! [`CMAES::run`]. Customization of algorithm parameters should be done on a per-problem basis
-//! using [`CMAESOptions`]. See [`Plot`] for generation of data plots.
+//! [`CMAES::run`] or [`CMAES::run_parallel`]. Customization of algorithm parameters should be done
+//! on a per-problem basis using [`CMAESOptions`]. See [`Plot`] for generation of data plots.
 //!
 //! ```no_run
 //! use cmaes::{CMAESOptions, DVector};
@@ -24,7 +24,7 @@
 //! let result = cmaes_state.run();
 //! ```
 //!
-//! The [`objective_function`] module provides a trait that allows for custom objective function
+//! The [`objective_function`] module provides traits that allow for custom objective function
 //! types that store state and parameters, and the [`CMAES::next`] method provides finer control
 //! over iteration if needed.
 //!
@@ -61,7 +61,7 @@ mod utils;
 pub use nalgebra::DVector;
 
 pub use crate::history::MAX_HISTORY_LENGTH;
-pub use crate::objective_function::ObjectiveFunction;
+pub use crate::objective_function::{ObjectiveFunction, ParallelObjectiveFunction};
 pub use crate::options::CMAESOptions;
 pub use crate::parameters::Weights;
 pub use crate::plotting::PlotOptions;
@@ -156,7 +156,7 @@ pub struct CMAES<F> {
     time_created: Instant,
 }
 
-impl<F: ObjectiveFunction> CMAES<F> {
+impl<F> CMAES<F> {
     /// Initializes a `CMAES` from a set of [`CMAESOptions`]. [`CMAESOptions::build`] should
     /// generally be used instead.
     pub fn new(objective_function: F, options: CMAESOptions) -> Result<Self, InvalidOptionsError> {
@@ -246,66 +246,28 @@ impl<F: ObjectiveFunction> CMAES<F> {
         Ok(cmaes)
     }
 
-    /// Iterates the algorithm until termination. [`next`][Self::next] can be called manually if
-    /// more control over termination is needed (plotting/printing the final state must be done
-    /// manually as well in this case).
-    pub fn run(&mut self) -> TerminationData {
-        let result = loop {
-            if let Some(data) = self.next() {
-                break data;
-            }
-        };
-
+    /// Shared logic between `run` and `run_parallel`
+    fn run_internal(&mut self, result: &TerminationData) {
         // Plot/print the final state
         self.add_plot_point();
 
         if self.print_gap_evals.is_some() {
             self.print_final_info(&result.reasons);
         }
-
-        result
     }
 
-    /// Samples `lambda` points from the distribution and returns the points sorted by their
-    /// objective function values. Also updates the histories of the best and median function
-    /// values.
-    ///
-    /// Returns `Err` if an invalid function value was encountered.
-    fn sample(&mut self) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
-        // Sample points
-        let individuals = self.sampler.sample(&self.state)?;
-
+    /// Shared logic between `sample` and `sample_parallel`
+    fn sample_internal(&mut self, individuals: &[EvaluatedPoint]) {
         // Update histories
-        self.history.update(&individuals);
-
-        Ok(individuals)
+        self.history.update(individuals);
     }
 
-    /// Advances to the next generation. Returns `Some` if a termination condition has been reached
-    /// and the algorithm should be stopped. [`run`][Self::run] is generally easier to use, but
-    /// iteration can be performed manually if finer control is needed (plotting/printing the final
-    /// state must be done manually as well in this case).
-    #[allow(clippy::should_implement_trait)]
-    #[must_use]
-    pub fn next(&mut self) -> Option<TerminationData> {
-        // Sample individuals
-        let individuals = match self.sample() {
-            Ok(x) => x,
-            Err(_) => {
-                return Some(
-                    self.get_termination_data(vec![TerminationReason::InvalidFunctionValue]),
-                );
-            }
-        };
-
+    /// Shared logic between `next` and `next_parallel`
+    fn next_internal(&mut self, individuals: &[EvaluatedPoint]) -> Option<TerminationData> {
         // Update state
         if self
             .state
-            .update(
-                self.sampler.function_evals(),
-                &self.parameters,
-                &individuals,
-            )
+            .update(self.sampler.function_evals(), &self.parameters, individuals)
             .is_err()
         {
             return Some(self.get_termination_data(vec![TerminationReason::PosDefCov]));
@@ -341,7 +303,7 @@ impl<F: ObjectiveFunction> CMAES<F> {
             parameters: &self.parameters,
             state: &self.state,
             history: &self.history,
-            individuals: &individuals,
+            individuals,
         }
         .check_termination_criteria();
 
@@ -550,6 +512,104 @@ impl<F: ObjectiveFunction> CMAES<F> {
         }
 
         println!("Final mean: {}", self.state.mean());
+    }
+}
+
+impl<F: ObjectiveFunction> CMAES<F> {
+    /// Iterates the algorithm until termination. [`next`][Self::next] can be called manually if
+    /// more control over termination is needed (plotting/printing the final state must be done
+    /// manually as well in this case).
+    pub fn run(&mut self) -> TerminationData {
+        let result = loop {
+            if let Some(data) = self.next() {
+                break data;
+            }
+        };
+
+        self.run_internal(&result);
+
+        result
+    }
+
+    /// Samples `lambda` points from the distribution and returns the points sorted by their
+    /// objective function values. Also updates the histories of the best and median function
+    /// values.
+    ///
+    /// Returns `Err` if an invalid function value was encountered.
+    fn sample(&mut self) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
+        // Sample points
+        let individuals = self.sampler.sample(&self.state)?;
+
+        self.sample_internal(&individuals);
+
+        Ok(individuals)
+    }
+
+    /// Advances to the next generation. Returns `Some` if a termination condition has been reached
+    /// and the algorithm should be stopped. [`run`][Self::run] is generally easier to use, but
+    /// iteration can be performed manually if finer control is needed (plotting/printing the final
+    /// state must be done manually as well in this case).
+    #[allow(clippy::should_implement_trait)]
+    #[must_use]
+    pub fn next(&mut self) -> Option<TerminationData> {
+        // Sample individuals
+        let individuals = match self.sample() {
+            Ok(x) => x,
+            Err(_) => {
+                return Some(
+                    self.get_termination_data(vec![TerminationReason::InvalidFunctionValue]),
+                );
+            }
+        };
+
+        self.next_internal(&individuals)
+    }
+}
+
+impl<F: ParallelObjectiveFunction> CMAES<F> {
+    /// Like [`run`][Self::run], but executes the objective function in parallel using multiple
+    /// threads. Requires that `F` implements
+    /// [`ParallelObjectiveFunction`][crate::objective_function::ParallelObjectiveFunction].
+    ///
+    /// Uses [rayon][rayon] internally.
+    pub fn run_parallel(&mut self) -> TerminationData {
+        let result = loop {
+            if let Some(data) = self.next_parallel() {
+                break data;
+            }
+        };
+
+        self.run_internal(&result);
+
+        result
+    }
+
+    /// Like `sample`, but evaluates the sampled points using multiple threads
+    fn sample_parallel(&mut self) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
+        let individuals = self.sampler.sample_parallel(&self.state)?;
+
+        self.sample_internal(&individuals);
+
+        Ok(individuals)
+    }
+
+    /// Like [`next`][Self::next], but executes the objective function in parallel using multiple
+    /// threads. Requires that `F` implements
+    /// [`ParallelObjectiveFunction`][crate::objective_function::ParallelObjectiveFunction].
+    ///
+    /// Uses [rayon][rayon] internally.
+    pub fn next_parallel(&mut self) -> Option<TerminationData> {
+        // Sample individuals
+        let individuals = match self.sample_parallel() {
+            Ok(x) => x,
+            Err(_) => {
+                return Some(
+                    self.get_termination_data(vec![TerminationReason::InvalidFunctionValue]),
+                );
+            }
+        };
+
+        self.next_internal(&individuals)
     }
 }
 

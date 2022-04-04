@@ -5,7 +5,7 @@ use nalgebra::DVector;
 use std::time::Duration;
 
 use crate::parameters::Weights;
-use crate::{ObjectiveFunction, PlotOptions, CMAES};
+use crate::{PlotOptions, CMAES};
 
 /// A builder for [`CMAES`]. Used to adjust parameters of the algorithm to each particular
 /// problem and to change other options. See the fields and methods for a full list of options.
@@ -267,12 +267,8 @@ impl CMAESOptions {
         self
     }
 
-    /// Attempts to build the [`CMAES`] using the chosen options. See [`CMAES`] for
-    /// information about the lifetime parameter.
-    pub fn build<F: ObjectiveFunction>(
-        self,
-        objective_function: F,
-    ) -> Result<CMAES<F>, InvalidOptionsError> {
+    /// Attempts to build the [`CMAES`] using the chosen options.
+    pub fn build<F>(self, objective_function: F) -> Result<CMAES<F>, InvalidOptionsError> {
         CMAES::new(objective_function, self)
     }
 }
