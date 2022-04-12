@@ -61,8 +61,8 @@ pub struct CMAESOptions {
     pub max_time: Option<Duration>,
     /// The value to use for the
     /// [`TerminationReason::FunTarget`][crate::TerminationReason::FunTarget] termination criterion.
-    /// Default value is `1e-12`.
-    pub fun_target: f64,
+    /// Default value is `None`.
+    pub fun_target: Option<f64>,
     /// The value to use for the [`TerminationReason::TolFun`][crate::TerminationReason::TolFun]
     /// termination criterion. Default value is `1e-12`.
     pub tol_fun: f64,
@@ -123,7 +123,7 @@ impl CMAESOptions {
             max_function_evals: None,
             max_generations: None,
             max_time: None,
-            fun_target: 1e-12,
+            fun_target: None,
             tol_fun: 1e-12,
             tol_fun_rel: 0.0,
             tol_fun_hist: 1e-12,
@@ -193,7 +193,7 @@ impl CMAESOptions {
     /// Changes the value for the `FunTarget` termination criterion from the default value (see
     /// [`TerminationReason::FunTarget`][crate::TerminationReason::FunTarget]).
     pub fn fun_target(mut self, fun_target: f64) -> Self {
-        self.fun_target = fun_target;
+        self.fun_target = Some(fun_target);
         self
     }
 

@@ -192,7 +192,7 @@ fn fixed_seed(use_threads: bool) {
     assert_approx_eq!(params.cmu(), 0.10055985647786812, eps);
     assert_approx_eq!(params.cm(), 1.0, eps);
     assert_approx_eq!(params.damp_s(), 1.4500944591496694, eps);
-    assert_approx_eq!(params.fun_target(), 0.000000000001, eps);
+    assert!(params.fun_target().is_none());
     assert_approx_eq!(params.tol_fun(), 0.000000000001, eps);
     assert_approx_eq!(params.tol_fun_rel(), 0.0, eps);
     assert_approx_eq!(params.tol_fun_hist(), 0.000000000001, eps);

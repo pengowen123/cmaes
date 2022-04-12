@@ -19,8 +19,8 @@ pub(crate) struct TerminationParameters {
     pub max_generations: Option<usize>,
     /// Value for the MaxTime termination criterion (disabled if `None`)
     pub max_time: Option<Duration>,
-    /// Value for the FunTarget termination criterion
-    pub fun_target: f64,
+    /// Value for the FunTarget termination criterion (disabled if `None`)
+    pub fun_target: Option<f64>,
     /// Value for the TolFun termination criterion
     pub tol_fun: f64,
     /// Value for the TolFunRel termination criterion
@@ -206,7 +206,7 @@ impl Parameters {
 
     /// Returns the value for the
     /// [`TerminationReason::FunTarget`][crate::TerminationReason::FunTarget] termination criterion.
-    pub fn fun_target(&self) -> f64 {
+    pub fn fun_target(&self) -> Option<f64> {
         self.termination.fun_target
     }
 

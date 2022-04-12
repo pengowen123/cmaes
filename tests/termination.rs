@@ -82,7 +82,7 @@ fn test_fun_target() {
     let function = |x: &DVector<f64>| x.magnitude().powi(2);
     run_test(
         function,
-        CMAESOptions::new(vec![5.0; 2], 1.0),
+        CMAESOptions::new(vec![5.0; 2], 1.0).fun_target(1e-12),
         |r| matches!(r, TerminationReason::FunTarget),
         0,
     );

@@ -93,7 +93,6 @@ impl<'a> TerminationCheck<'a> {
         let dim = self.parameters.dim();
         let lambda = self.parameters.lambda();
         let initial_sigma = self.parameters.initial_sigma();
-        let fun_target = self.parameters.fun_target();
         let tol_fun = self.parameters.tol_fun();
         let tol_fun_rel_option = self.parameters.tol_fun_rel();
         let tol_fun_hist = self.parameters.tol_fun_hist();
@@ -131,8 +130,10 @@ impl<'a> TerminationCheck<'a> {
         }
 
         // Check TerminationReason::FunTarget
-        if self.individuals.iter().any(|ind| ind.value() <= fun_target) {
-            result.push(TerminationReason::FunTarget);
+        if let Some(fun_target) = self.parameters.fun_target() {
+            if self.individuals.iter().any(|ind| ind.value() <= fun_target) {
+                result.push(TerminationReason::FunTarget);
+            }
         }
 
         // Check TerminationReason::TolFun and TerminationReason::TolFunRel
@@ -342,7 +343,7 @@ mod tests {
             max_function_evals: max_function_evals,
             max_generations: max_generations,
             max_time,
-            fun_target: 1e-12,
+            fun_target: Some(1e-12),
             tol_fun: 1e-12,
             tol_fun_rel: 1e-12,
             tol_fun_hist: tol_fun_hist.unwrap_or(1e-12),

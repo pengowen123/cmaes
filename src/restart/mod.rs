@@ -307,7 +307,7 @@ impl Restarter {
             let mut options = CMAESOptions::new(initial_mean, DEFAULT_INITIAL_STEP_SIZE).seed(seed);
             options.max_function_evals = self.max_function_evals_per_run;
             options.max_generations = self.max_generations_per_run;
-            options.fun_target = self.fun_target.unwrap_or(options.fun_target);
+            options.fun_target = self.fun_target;
 
             // Respects max_function_evals more precisely, but is likely to cut runs short in
             // IPOP/BIPOP
