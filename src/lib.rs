@@ -2,11 +2,13 @@
 //! objective function and performs well on high-dimension, non-linear, non-convex, ill-conditioned,
 //! and/or noisy problems.
 //!
-//! # Quick Start
+//! # Overview
 //!
-//! To optimize a function, simply create and build a [`CMAESOptions`] and call
-//! [`CMAES::run`] or [`CMAES::run_parallel`]. Customization of algorithm parameters should be done
-//! on a per-problem basis using [`CMAESOptions`]. See [`Plot`] for generation of data plots.
+//! There are two main ways to use `cmaes`:
+//!
+//! Individual runs of the algorithm can be performed by creating and building a [`CMAESOptions`]
+//! and calling [`CMAES::run`] or [`CMAES::run_parallel`]. This option provides the most
+//! flexibility and customization and allows for visualizing runs through data plots (see [`Plot`]).
 //!
 //! ```no_run
 //! use cmaes::{CMAESOptions, DVector};
@@ -21,18 +23,58 @@
 //!     .build(sphere)
 //!     .unwrap();
 //!
-//! let result = cmaes_state.run();
+//! let results = cmaes_state.run();
 //! ```
 //!
+//! For many problems, it is useful to perform multiple independent restarts of the algorithm with
+//! varying initial parameters. The [`restart`] module implements several automatic restart
+//! strategies to this end. To use them, create and build a
+//! [`RestartOptions`][crate::restart::RestartOptions] and call
+//! [`Restarter::run`][crate::restart::Restarter::run],
+//! [`Restarter::run_parallel`][crate::restart::Restarter::run_parallel`], or another `run_*`
+//! method. This option provides greater robustness in solving more complex
+//! problems but provides less control over individual runs and cannot produce data plots.
+//!
+//! ```no_run
+//! use cmaes::restart::{RestartOptions, RestartStrategy};
+//! use cmaes::DVector;
+//!
+//! let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
+//!
+//! let dim = 10;
+//! let strategy = RestartStrategy::BIPOP(Default::default());
+//! let restarter = RestartOptions::new(dim, -5.0..=5.0, strategy)
+//!     .fun_target(1e-8)
+//!     .enable_printing(true)
+//!     .build()
+//!     .unwrap();
+//!
+//! let results = restarter.run_parallel(|| sphere);
+//! ```
+//!
+//! # Further configuration
+//!
+//! [`CMAESOptions`] provides many configurable parameters and can be used to tune the algorithm to
+//! each particular problem (though this is usually unnecessary beyond changing the initial mean and
+//! step size).
+//!
 //! The [`objective_function`] module provides traits that allow for custom objective function
-//! types that store state and parameters, and the [`CMAES::next`] method provides finer control
-//! over iteration if needed.
+//! types that store state and parameters.
 //!
-//! See [this paper][0] for details on the algorithm itself. This library is based on the linked
-//! paper and the [pycma][1] implementation.
+//! The [`CMAES::next`] method provides finer control over iteration if needed.
 //!
-//! [0]: https://arxiv.org/pdf/1604.00772.pdf
-//! [1]: https://github.com/CMA-ES/pycma
+//! # Citations
+//!
+//! The following contain more detailed information on the algorithms implemented by this library
+//! or were referenced in its implementation.
+//!
+//! Auger, Anne and Hansen, Nikolaus. “A Restart CMA Evolution Strategy with Increasing Population Size.” 2005 IEEE Congress on Evolutionary Computation, vol. 2, 2005, pp. 1769-1776 Vol. 2, <https://doi.org/10.1109/CEC.2005.1554902>.
+//!
+//! Hansen, Nikolaus. “Benchmarking a BI-Population CMA-ES on the BBOB-2009 Function Testbed.” GECCO (Companion), July 2009, <https://doi.org/10.1145/1570256.1570333>.
+//!
+//! Auger, Anne, and Nikolaus Hansen. Tutorial CMA-ES. 2013, <https://doi.org/10.1145/2464576.2483910>.
+//!
+//! Hansen, Nikolaus, Akimoto, Youhei, and Baudis, Petr. CMA-ES/Pycma on Github. Feb. 2019, <https://doi.org/10.5281/zenodo.2559634>.
 
 // lib.rs contains the top-level `CMAES` type that implements the algorithm and interface as well as
 // some user-facing types for termination data.
@@ -46,6 +88,8 @@
 // `state` modules.
 //
 // Termination criteria are handled in the `termination` module.
+//
+// Automatic restart algorithms are contained in the `restart` module.
 
 mod history;
 mod matrix;
@@ -53,6 +97,7 @@ pub mod objective_function;
 pub mod options;
 pub mod parameters;
 pub mod plotting;
+pub mod restart;
 mod sampling;
 mod state;
 pub mod termination;
@@ -170,7 +215,7 @@ impl<F> CMAES<F> {
             return Err(InvalidOptionsError::PopulationSize);
         }
 
-        if !options.initial_step_size.is_normal() || options.initial_step_size <= 0.0 {
+        if !options::is_initial_step_size_valid(options.initial_step_size) {
             return Err(InvalidOptionsError::InitialStepSize);
         }
 

@@ -38,13 +38,13 @@ let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
 let dim = 10;
 let mut cmaes_state = CMAESOptions::new(vec![1.0; dim], 1.0)
     .fun_target(1e-8)
+    .max_generations(20000)
     .enable_printing(200)
     .enable_plot(PlotOptions::new(0, false))
     .build(sphere)
     .unwrap();
 
-let max_generations = 20000;
-let result = cmaes_state.run(max_generations);
+let results = cmaes_state.run();
 
 cmaes_state.get_plot().unwrap().save_to_file("plot.png", true).unwrap();
 ```
@@ -55,6 +55,25 @@ The produced plot will look like this:
     <img src="https://pengowen123.github.io/cmaes/images/plot_sphere.png"
         width=750 height=750 />
 </a>
+
+For more complex problems, automatic restarts are also provided:
+```rust
+use cmaes::restart::{RestartOptions, RestartStrategy};
+use cmaes::DVector;
+
+let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
+
+let strategy = RestartStrategy::BIPOP(Default::default());
+let dim = 10;
+let search_range = -5.0..=5.0;
+let restarter = RestartOptions::new(dim, search_range, strategy)
+    .fun_target(1e-10)
+    .enable_printing(true)
+    .build()
+    .unwrap();
+
+let results = restarter.run(|| sphere);
+```
 
 For more information, see the [documentation][2] and [examples][3].
 

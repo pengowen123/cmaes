@@ -286,6 +286,11 @@ pub enum InvalidOptionsError {
     Cm,
 }
 
+/// Returns whether the initial step size is valid (greater than zero and normal)
+pub(crate) fn is_initial_step_size_valid(step_size: f64) -> bool {
+    step_size.is_normal() && step_size > 0.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,6 +306,10 @@ mod tests {
                 .population_size(3)
                 .build(dummy_function),
             Err(InvalidOptionsError::PopulationSize),
+        ));
+        assert!(matches!(
+            CMAESOptions::new(vec![1.0; 5], 0.0).build(dummy_function),
+            Err(InvalidOptionsError::InitialStepSize),
         ));
         assert!(matches!(
             CMAESOptions::new(vec![1.0; 5], -1.0).build(dummy_function),
