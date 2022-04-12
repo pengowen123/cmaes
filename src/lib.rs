@@ -4,11 +4,22 @@
 //!
 //! # Overview
 //!
-//! There are two main ways to use `cmaes`:
+//! There are three main ways to use `cmaes`:
 //!
-//! Individual runs of the algorithm can be performed by creating and building a [`CMAESOptions`]
-//! and calling [`CMAES::run`] or [`CMAES::run_parallel`]. This option provides the most
-//! flexibility and customization and allows for visualizing runs through data plots (see [`Plot`]).
+//! The quickest and easiest way is to use a convenience function provided in the [`functions`]
+//! module, such as [`fmin`][crate::functions::fmin]:
+//!
+//! ```no_run
+//! use cmaes::DVector;
+//!
+//! let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
+//! let dim = 10;
+//! let solution = cmaes::fmin(sphere, vec![5.0; dim], 1.0);
+//! ```
+//!
+//! Further configuration of a run can be performed by creating and building a [`CMAESOptions`] and
+//! calling [`CMAES::run`] or [`CMAES::run_parallel`]. This option provides the most flexibility and
+//! customization and allows for visualizing runs through data plots (see [`Plot`]).
 //!
 //! ```no_run
 //! use cmaes::{CMAESOptions, DVector};
@@ -91,6 +102,7 @@
 //
 // Automatic restart algorithms are contained in the `restart` module.
 
+pub mod functions;
 mod history;
 mod matrix;
 pub mod objective_function;
@@ -105,6 +117,7 @@ mod utils;
 
 pub use nalgebra::DVector;
 
+pub use crate::functions::*;
 pub use crate::history::MAX_HISTORY_LENGTH;
 pub use crate::objective_function::{ObjectiveFunction, ParallelObjectiveFunction};
 pub use crate::options::CMAESOptions;

@@ -40,7 +40,10 @@ pub struct CMAESOptions {
     /// converging to local optima, but will lead to a slower convergence rate. Conversely, a lower
     /// value will reduce the robustness of the algorithm but will lead to a higher convergence
     /// rate. Generally, the population size should only be left at the default value or increased.
-    /// It is generally useful to restart the algorithm repeatedly with increasing population sizes.
+    /// It is generally useful to restart the algorithm repeatedly with increasing population sizes,
+    /// which can be done automatically with the [`IPOP`][crate::restart::IPOP] and
+    /// [`BIPOP`][crate::restart::BIPOP] restart strategies (see the [`restart`][crate::restart]
+    /// module).
     pub population_size: usize,
     /// The distribution to use when assigning weights to individuals. Default value is
     /// [`Weights::Negative`].

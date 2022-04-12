@@ -23,6 +23,7 @@
 - Switched to static dispatch for objective function types.
 - Added `ParallelObjectiveFunction` trait and `CMAES::run_parallel` and `CMAES::next_parallel` methods to allow parallel execution of objective functions.
 - Added `restart` module that implements various automatic restart algorithms.
+- Added `fmin` and `fmin_parallel` functions for convenience in cases where configuration is not required.
 
 ## 0.1.1 (March 4th, 2022)
 

@@ -31,6 +31,15 @@ The LAPACK implementation used may be selected through Cargo features (see `Carg
 
 Then, to optimize a function:
 ```rust
+use cmaes::DVector;
+
+let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
+let dim = 10;
+let solution = cmaes::fmin(sphere, vec![5.0; dim], 1.0);
+```
+
+More options can be accessed through the `CMAESOptions` type, including data plots:
+```rust
 use cmaes::{CMAESOptions, DVector, PlotOptions};
 
 let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
