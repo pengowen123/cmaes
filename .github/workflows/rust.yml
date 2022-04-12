@@ -17,8 +17,11 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --release --verbose
     - name: Run tests
-      run: cargo test --verbose --lib && cargo test --verbose --doc && cargo test --verbose --test termination && cargo test --verbose consistent
+      run: cargo test --release --verbose --lib
+      run: cargo test --release --verbose --doc
+      run: cargo test --release --verbose --test termination
+      run: cargo test --release --verbose consistent
     - name: Run examples
       run: make run-examples
