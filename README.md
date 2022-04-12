@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/cmaes)](https://crates.io/crates/cmaes)
 [![Rust](https://github.com/pengowen123/cmaes/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/pengowen123/cmaes/actions/workflows/rust.yml)
 
-A Rust implementation of the CMA-ES optimization algorithm. It is used to minimize the value of an objective function and performs well on high-dimension, non-linear, non-convex, ill-conditioned, and/or noisy problems. See [this paper][0] for details on the algorithm itself. This library is based on the linked paper and the [pycma][1] implementation.
+A Rust implementation of the CMA-ES optimization algorithm. It is used to minimize the value of an objective function and performs well on high-dimension, non-linear, non-convex, ill-conditioned, and/or noisy problems. See [this paper][5] for details on the algorithm itself.
 
 ## Dependencies
 
@@ -16,7 +16,7 @@ A Rust implementation of the CMA-ES optimization algorithm. It is used to minimi
 - Rust (tested with rustc 1.57, earlier versions may work)
 - FreeType
 
-Dependencies may differ depending on the selected LAPACK implementation. Building is currently only supported on Linux (see [issue #4][4]).
+Dependencies may differ depending on the selected LAPACK implementation. Building is currently only supported on Linux (see [issue #4][2]).
 
 ## Quick Start
 
@@ -84,7 +84,7 @@ let restarter = RestartOptions::new(dim, search_range, strategy)
 let results = restarter.run(|| sphere);
 ```
 
-For more information, see the [documentation][2] and [examples][3].
+For more information, see the [documentation][0] and [examples][1].
 
 ## Testing
 
@@ -107,8 +107,22 @@ Licensed under either of
 
 at your option.
 
-[0]: https://arxiv.org/pdf/1604.00772.pdf
-[1]: https://github.com/CMA-ES/pycma
-[2]: https://docs.rs/cmaes/latest/cmaes
-[3]: https://github.com/pengowen123/cmaes/tree/master/examples
-[4]: https://github.com/pengowen123/cmaes/issues/4
+## Citations
+
+The following contain more detailed information on the algorithms implemented by this library or were referenced in its implementation.
+
+Auger, Anne and Hansen, Nikolaus. “A Restart CMA Evolution Strategy with Increasing Population Size.” 2005 IEEE Congress on Evolutionary Computation, vol. 2, 2005, pp. 1769-1776 Vol. 2, [https://doi.org/10.1109/CEC.2005.1554902][3].
+
+Hansen, Nikolaus. “Benchmarking a BI-Population CMA-ES on the BBOB-2009 Function Testbed.” GECCO (Companion), July 2009, [https://doi.org/10.1145/1570256.1570333][4].
+
+Auger, Anne, and Nikolaus Hansen. Tutorial CMA-ES. 2013, [https://doi.org/10.1145/2464576.2483910][5].
+
+Hansen, Nikolaus, Akimoto, Youhei, and Baudis, Petr. CMA-ES/Pycma on Github. Feb. 2019, [https://doi.org/10.5281/zenodo.2559634][6].
+
+[0]: https://docs.rs/cmaes/latest/cmaes
+[1]: https://github.com/pengowen123/cmaes/tree/master/examples
+[2]: https://github.com/pengowen123/cmaes/issues/4
+[3]: https://doi.org/10.1109/CEC.2005.1554902
+[4]: https://doi.org/10.1145/1570256.1570333
+[5]: https://doi.org/10.1145/2464576.2483910
+[6]: https://doi.org/10.5281/zenodo.2559634
