@@ -1,0 +1,10 @@
+#!/bin/bash
+
+cargo fmt --check
+
+if [ $? -ne 0 ]; then
+    echo "Your code has formatting issues; please run \`cargo fmt\` to fix them"
+    exit 1
+fi
+
+exit 0
