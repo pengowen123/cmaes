@@ -14,9 +14,14 @@ fn rosenbrock(x: &DVector<f64>) -> f64 {
         .sum::<f64>()
 }
 
-// Builds a `CMAES` with a random initial mean and advances it some number of iterations to
-// avoid benchmarking based on the trivial initial state
-fn get_cmaes_state(dim: usize, weights: Weights, plot: bool) -> CMAES<Box<dyn ObjectiveFunction>> {
+// Builds a `CMAES` with a random initial mean and advances it `100 + extra_setup_iters` iterations
+// to avoid benchmarking based on the trivial initial state
+fn get_cmaes_state(
+    dim: usize,
+    weights: Weights,
+    plot: bool,
+    extra_setup_iters: usize,
+) -> CMAES<Box<dyn ObjectiveFunction>> {
     let initial_mean = (0..dim)
         .map(|_| 3.0 * rand::random::<f64>())
         .collect::<Vec<_>>();
@@ -28,7 +33,7 @@ fn get_cmaes_state(dim: usize, weights: Weights, plot: bool) -> CMAES<Box<dyn Ob
 
     let mut cmaes_state = options.build(Box::new(rosenbrock) as _).unwrap();
 
-    for _ in 0..100 {
+    for _ in 0..100 + extra_setup_iters {
         let _ = cmaes_state.next();
     }
 
@@ -40,10 +45,20 @@ fn single_iter(state: &mut CMAES<Box<dyn ObjectiveFunction>>) -> Option<Terminat
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
+    let mut extra_setup_iters = 0;
     let mut run_bench = |name, dim, weights, plot| {
         c.bench_function(name, |b| {
             b.iter_batched_ref(
-                || get_cmaes_state(dim, weights, plot),
+                || {
+                    let state = get_cmaes_state(dim, weights, plot, extra_setup_iters);
+
+                    // Vary the number of initial setup iters to include the proper distribution of
+                    // iters with eigen updates
+                    extra_setup_iters =
+                        (extra_setup_iters + 1) % state.generations_per_eigen_update();
+
+                    state
+                },
                 |mut state| single_iter(&mut state),
                 BatchSize::SmallInput,
             )

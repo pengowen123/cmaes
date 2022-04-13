@@ -457,6 +457,19 @@ impl<F> CMAES<F> {
         self.plot.as_mut()
     }
 
+    /// Returns how many generations take place for each update of the eigendecomposition.
+    ///
+    /// For example, if this value is `3`, an eigen update will take place once for every `3`
+    /// `next` calls.
+    // Only used for benchmarks; probably not useful otherwise
+    #[doc(hidden)]
+    pub fn generations_per_eigen_update(&self) -> usize {
+        // NOTE: will have to be updated if/when fevals per generation != lambda
+        (self.state.evals_per_eigen_update(&self.parameters) as f64
+            / self.parameters.lambda() as f64)
+            .ceil() as usize
+    }
+
     /// Returns a `TerminationData` with the current best individual/value and the given reasons.
     fn get_termination_data(&self, reasons: Vec<TerminationReason>) -> TerminationData {
         return TerminationData {
@@ -715,7 +728,7 @@ mod tests {
         let mut cmaes = CMAESOptions::new(vec![0.0; 10], 1.0)
             .enable_plot(PlotOptions::new(evals_per_plot_point, false))
             .max_generations(1)
-            .build(|_: &DVector<f64>| 0.0)
+            .build(dummy_function)
             .unwrap();
 
         // The initial state is always plotted
@@ -726,5 +739,27 @@ mod tests {
         // The final state is always plotted when using CMAES::run, regardless of
         // evals_per_plot_point
         assert_eq!(cmaes.get_plot().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_generations_per_eigen_update() {
+        let cmaes_3 = CMAESOptions::new(vec![0.0; 3], 1.0).build(dummy_function).unwrap();
+        let cmaes_10 = CMAESOptions::new(vec![0.0; 10], 1.0).build(dummy_function).unwrap();
+        let cmaes_30 = CMAESOptions::new(vec![0.0; 30], 1.0).build(dummy_function).unwrap();
+
+        assert_eq!(2, cmaes_3.generations_per_eigen_update());
+        assert_eq!(2, cmaes_10.generations_per_eigen_update());
+        assert_eq!(3, cmaes_30.generations_per_eigen_update());
+    }
+
+    #[test]
+    fn test_evals_per_eigen_update() {
+        let cmaes_3 = CMAESOptions::new(vec![0.0; 3], 1.0).build(dummy_function).unwrap();
+        let cmaes_10 = CMAESOptions::new(vec![0.0; 10], 1.0).build(dummy_function).unwrap();
+        let cmaes_30 = CMAESOptions::new(vec![0.0; 30], 1.0).build(dummy_function).unwrap();
+
+        assert_eq!(8, cmaes_3.state.evals_per_eigen_update(cmaes_3.parameters()));
+        assert_eq!(15, cmaes_10.state.evals_per_eigen_update(cmaes_10.parameters()));
+        assert_eq!(34, cmaes_30.state.evals_per_eigen_update(cmaes_30.parameters()));
     }
 }

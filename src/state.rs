@@ -117,8 +117,7 @@ impl State {
 
         // Update eigendecomposition occasionally (updating every generation is unnecessary and
         // inefficient for high dim)
-        let evals_per_eigen =
-            (0.5 * dim as f64 * params.lambda() as f64 / ((c1 + cmu) * dim.pow(2) as f64)) as usize;
+        let evals_per_eigen = self.evals_per_eigen_update(params);
         let do_eigen_update =
             current_function_evals >= self.last_eigen_update_evals + evals_per_eigen;
 
@@ -165,6 +164,13 @@ impl State {
 
     pub fn path_c(&self) -> &DVector<f64> {
         &self.path_c
+    }
+
+    /// Returns how many function evals should pass before updating the eigendecomposition
+    pub fn evals_per_eigen_update(&self, params: &Parameters) -> usize {
+        (0.5 * params.dim() as f64 * params.lambda() as f64
+            / ((params.c1() + params.cmu()) * params.dim().pow(2) as f64))
+            .ceil() as usize
     }
 
     // These methods are only used for setting up termination tests
