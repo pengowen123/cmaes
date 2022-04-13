@@ -153,51 +153,46 @@ fn fixed_seed(use_threads: bool) {
     let function = rosenbrock;
     let seed = 76561199230847669;
     let dim = 4;
-    let population_size = 12;
     let mut cmaes_state = CMAESOptions::new(vec![0.0; dim], 5.0)
-        .population_size(population_size)
         .seed(seed)
         .build(function)
         .unwrap();
 
     let params = cmaes_state.parameters();
+    let lambda = params.lambda();
 
     let eps = 1e-12;
     assert_eq!(params.dim(), dim);
-    assert_eq!(params.lambda(), population_size);
-    assert_eq!(params.mu(), 6);
+    assert_eq!(lambda, 8);
+    assert_eq!(params.mu(), 4);
     assert_approx_eq!(params.initial_sigma(), 5.0, eps);
-    assert_approx_eq!(params.mu_eff(), 3.729458934303068, eps);
+    assert_approx_eq!(params.mu_eff(), 2.6001788261131793, eps);
     let weights_expected = [
-        0.4024029428187127,
-        0.25338908403288657,
-        0.16622156455542053,
-        0.10437522524706053,
-        0.0564034775763251,
-        0.017207705769594468,
-        -0.05531493617379553,
-        -0.1549841113726818,
-        -0.24289855445276476,
-        -0.321540703596474,
-        -0.3926811809212799,
-        -0.45762734831325463,
+        0.5299301844787792,
+        0.2857142857142857,
+        0.14285714285714282,
+        0.041498386949792215,
+        -0.17013144983238102,
+        -0.4645361478293982,
+        -0.7134517732694924,
+        -0.9290722956587965,
     ];
     for (w, expected) in params.weights().iter().zip(weights_expected) {
         assert_approx_eq!(w, expected, eps);
     }
 
     assert_approx_eq!(params.cc(), 0.5, eps);
-    assert_approx_eq!(params.c1(), 0.06285462000247571, eps);
-    assert_approx_eq!(params.cs(), 0.4500944591496695, eps);
-    assert_approx_eq!(params.cmu(), 0.10055985647786812, eps);
+    assert_approx_eq!(params.c1(), 0.06516742738228268, eps);
+    assert_approx_eq!(params.cs(), 0.39656102677983807, eps);
+    assert_approx_eq!(params.cmu(), 0.05102399983259446, eps);
     assert_approx_eq!(params.cm(), 1.0, eps);
-    assert_approx_eq!(params.damp_s(), 1.4500944591496694, eps);
+    assert_approx_eq!(params.damp_s(), 1.396561026779838, eps);
     assert!(params.fun_target().is_none());
     assert_approx_eq!(params.tol_fun(), 0.000000000001, eps);
     assert_approx_eq!(params.tol_fun_rel(), 0.0, eps);
     assert_approx_eq!(params.tol_fun_hist(), 0.000000000001, eps);
     assert_approx_eq!(params.tol_x(), 0.000000000005, eps);
-    assert_eq!(params.tol_stagnation(), 167);
+    assert_eq!(params.tol_stagnation(), 200);
     assert_approx_eq!(params.tol_x_up(), 1e8, eps);
     assert_approx_eq!(params.tol_condition_cov(), 1e14, eps);
     assert_eq!(params.seed(), seed);
@@ -212,56 +207,56 @@ fn fixed_seed(use_threads: bool) {
     }
 
     assert_eq!(cmaes_state.generation(), generations);
-    assert_eq!(cmaes_state.function_evals(), population_size * generations);
+    assert_eq!(cmaes_state.function_evals(), lambda * generations);
 
     let mean_expected = [
-        -0.7410175385751399,
-        0.4584000754445906,
-        0.07271743391612415,
-        -0.21426659534075343,
+        -0.04442673185635858,
+        0.02353654392996063,
+        0.4096764724597227,
+        0.2042616278234617,
     ];
     for (x, expected) in cmaes_state.mean().iter().zip(mean_expected) {
         assert_approx_eq!(x, expected, eps);
     }
 
     let eigenvalues_expected = [
-        0.16552675641022155,
-        0.20638999168067776,
-        0.245971498782978,
-        0.7533179588300154,
+        0.22289900256933676,
+        0.26348092262682127,
+        0.4463174403572355,
+        0.6706156210749331,
     ];
     for (x, expected) in cmaes_state.eigenvalues().iter().zip(eigenvalues_expected) {
         assert_approx_eq!(x, expected, eps);
     }
 
-    assert_approx_eq!(cmaes_state.axis_ratio(), 2.1333153488330385, eps);
-    assert_approx_eq!(cmaes_state.sigma(), 1.248640716345183, eps);
+    assert_approx_eq!(cmaes_state.axis_ratio(), 1.7345338122305334, eps);
+    assert_approx_eq!(cmaes_state.sigma(), 1.0419239528728568, eps);
 
     let current_best = cmaes_state.current_best_individual().unwrap();
     let current_best_expected = [
-        -1.13647778742836,
-        0.6467966530116105,
-        0.3239978388983541,
-        -0.41993207745293704,
+        0.21674424807265003,
+        0.45885012656947854,
+        0.3323521341777004,
+        0.3997481950851467,
     ];
     for (x, expected) in current_best.point.iter().zip(current_best_expected) {
         assert_approx_eq!(x, expected, eps);
     }
 
-    assert_approx_eq!(current_best.value, 75.16391027290686, eps);
+    assert_approx_eq!(current_best.value, 28.168566541912956, eps);
 
     let overall_best = cmaes_state.overall_best_individual().unwrap();
     let overall_best_expected = [
-        -0.7449503227893762,
-        0.1848895283976989,
-        -0.2416606558228348,
-        -0.19268839630032886,
+        0.21674424807265003,
+        0.45885012656947854,
+        0.3323521341777004,
+        0.3997481950851467,
     ];
     for (x, expected) in overall_best.point.iter().zip(overall_best_expected) {
         assert_approx_eq!(x, expected, eps);
     }
 
-    assert_approx_eq!(overall_best.value, 32.859092832300654, eps);
+    assert_approx_eq!(overall_best.value, 28.168566541912956, eps);
 }
 
 #[test]
