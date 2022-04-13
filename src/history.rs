@@ -57,6 +57,11 @@ impl History {
     }
 
     /// Always `Some` if `Self::update` has been called at least once
+    pub fn current_median_function_value(&self) -> Option<f64> {
+        self.median_function_values.get(0).cloned()
+    }
+
+    /// Always `Some` if `Self::update` has been called at least once
     pub fn first_median_function_value(&self) -> Option<f64> {
         self.first_median_function_value
     }

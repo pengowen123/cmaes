@@ -43,6 +43,7 @@ struct PlotData {
     /// Function evals at which other data points were recorded
     function_evals: Vec<usize>,
     best_function_value: Vec<f64>,
+    median_function_value: Vec<f64>,
     sigma: Vec<f64>,
     axis_ratio: Vec<f64>,
     // Each element of the following contains the histories of an individual dimension
@@ -58,6 +59,7 @@ impl PlotData {
         Self {
             function_evals: Vec::new(),
             best_function_value: Vec::new(),
+            median_function_value: Vec::new(),
             sigma: Vec::new(),
             axis_ratio: Vec::new(),
             mean_dimensions: (0..dimensions).map(|_| Vec::new()).collect(),
@@ -92,6 +94,13 @@ impl PlotData {
             .unwrap_or(f64::NAN);
         self.best_function_value
             .push(apply_offset(best_function_value));
+        let median_function_value = history
+            .current_median_function_value()
+            // At 0 function evals there isn't a median function value yet, so use NAN and filter it
+            // later
+            .unwrap_or(f64::NAN);
+        self.median_function_value
+            .push(apply_offset(median_function_value));
         self.sigma.push(apply_offset(state.sigma()));
 
         let mut sqrt_eigenvalues = state.cov_sqrt_eigenvalues().diagonal();
@@ -129,6 +138,7 @@ impl PlotData {
         self.function_evals.truncate(1);
 
         clear(&mut self.best_function_value);
+        clear(&mut self.median_function_value);
         clear(&mut self.sigma);
         clear(&mut self.axis_ratio);
 
@@ -173,8 +183,9 @@ impl PlotOptions {
 /// the plot, use [`CMAESOptions::enable_plot`][crate::CMAESOptions::enable_plot].
 ///
 /// Plots for each iteration the:
-/// - Distance from the minimum objective function value
-/// - Absolute objective function value
+/// - Distance of best value from the minimum objective function value
+/// - Absolute best objective function value
+/// - Absolute median objective function value
 /// - Distribution axis ratio
 /// - Distribution mean
 /// - Scaling of each distribution axis.
@@ -315,8 +326,8 @@ impl Plot {
         self.data.clear();
     }
 
-    /// Draws all single-dimensioned data to the drawing area (f - min(f), abs(f), sigma, axis
-    /// ratio)
+    /// Draws all single-dimensioned data to the drawing area (f - min(f), abs(f), abs(median),
+    /// sigma, axis ratio)
     fn draw_single_dimensioned(
         &self,
         area: &DrawingArea<Backend, coord::Shift>,
@@ -347,6 +358,7 @@ impl Plot {
             .map(|y| apply_offset(y - min_function_value));
 
         let abs_best_value = self.data.best_function_value.iter().map(|y| y.abs());
+        let abs_median_value = self.data.median_function_value.iter().map(|y| y.abs());
 
         // Excludes a few values to not break the range
         let all_y_values = dist_to_min
@@ -354,11 +366,13 @@ impl Plot {
             .enumerate()
             // The minimum value will be drawn if it is reached more than once, so include it in the
             // range only in that case
-            .filter(|&(i, y)| !y.is_nan() && (min_count > 1 || i != min_index))
+            .filter(|&(i, _)| min_count > 1 || i != min_index)
             .map(|(_, y)| y)
-            .chain(abs_best_value.clone().filter(|y| !y.is_nan()))
+            .chain(abs_best_value.clone())
+            .chain(abs_median_value.clone())
             .chain(self.data.sigma.iter().cloned())
-            .chain(self.data.axis_ratio.iter().cloned());
+            .chain(self.data.axis_ratio.iter().cloned())
+            .filter(|y| !y.is_nan());
         let (y_range, num_y_labels) = get_log_range(all_y_values);
 
         let draw = |context: &mut ChartContext<_, _>| {
@@ -397,6 +411,14 @@ impl Plot {
                 colors::BLUE,
             );
 
+            // Median function values
+            let points_abs_median_value = get_points(function_evals.clone(), abs_median_value);
+            add_to_legend(
+                context.draw_series(LineSeries::new(points_abs_median_value, &colors::MAGENTA))?,
+                "abs(median)",
+                colors::MAGENTA,
+            );
+
             // Marker for overall best function value
             if !min_function_value.is_nan() {
                 let abs_overall_best = (
@@ -429,7 +451,7 @@ impl Plot {
 
         self.configure_area(
             area,
-            "f - min(f), abs(f), Sigma, Axis Ratio",
+            "f - min(f), abs(f), abs(median) Sigma, Axis Ratio",
             Some(SeriesLabelPosition::LowerLeft),
             y_range,
             true,

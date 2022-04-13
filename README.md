@@ -61,8 +61,7 @@ cmaes_state.get_plot().unwrap().save_to_file("plot.png", true).unwrap();
 The produced plot will look like this:
 
 <a href="https://github.com/pengowen123/cmaes/tree/master/images/plot_sphere.png">
-    <img src="https://pengowen123.github.io/cmaes/images/plot_sphere.png"
-        width=750 height=750 />
+    <img src="https://pengowen123.github.io/cmaes/images/plot_sphere.png" />
 </a>
 
 For more complex problems, automatic restarts are also provided:

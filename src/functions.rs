@@ -20,8 +20,9 @@ use crate::{CMAESOptions, Individual, ObjectiveFunction, ParallelObjectiveFuncti
 /// let solution = cmaes::fmin(sphere, vec![5.0; dim], 1.0);
 /// ```
 pub fn fmin<F, V>(f: F, initial_mean: V, initial_step_size: f64) -> Individual
-where F: ObjectiveFunction,
-      V: Into<DVector<f64>>,
+where
+    F: ObjectiveFunction,
+    V: Into<DVector<f64>>,
 {
     CMAESOptions::new(initial_mean, initial_step_size)
         .enable_printing(200)
@@ -46,8 +47,9 @@ where F: ObjectiveFunction,
 /// let solution = cmaes::fmin_parallel(sphere, vec![5.0; dim], 1.0);
 /// ```
 pub fn fmin_parallel<F, V>(f: F, initial_mean: V, initial_step_size: f64) -> Individual
-where F: ParallelObjectiveFunction,
-      V: Into<DVector<f64>>,
+where
+    F: ParallelObjectiveFunction,
+    V: Into<DVector<f64>>,
 {
     CMAESOptions::new(initial_mean, initial_step_size)
         .enable_printing(200)
