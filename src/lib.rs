@@ -743,9 +743,15 @@ mod tests {
 
     #[test]
     fn test_generations_per_eigen_update() {
-        let cmaes_3 = CMAESOptions::new(vec![0.0; 3], 1.0).build(dummy_function).unwrap();
-        let cmaes_10 = CMAESOptions::new(vec![0.0; 10], 1.0).build(dummy_function).unwrap();
-        let cmaes_30 = CMAESOptions::new(vec![0.0; 30], 1.0).build(dummy_function).unwrap();
+        let cmaes_3 = CMAESOptions::new(vec![0.0; 3], 1.0)
+            .build(dummy_function)
+            .unwrap();
+        let cmaes_10 = CMAESOptions::new(vec![0.0; 10], 1.0)
+            .build(dummy_function)
+            .unwrap();
+        let cmaes_30 = CMAESOptions::new(vec![0.0; 30], 1.0)
+            .build(dummy_function)
+            .unwrap();
 
         assert_eq!(2, cmaes_3.generations_per_eigen_update());
         assert_eq!(2, cmaes_10.generations_per_eigen_update());
@@ -754,12 +760,27 @@ mod tests {
 
     #[test]
     fn test_evals_per_eigen_update() {
-        let cmaes_3 = CMAESOptions::new(vec![0.0; 3], 1.0).build(dummy_function).unwrap();
-        let cmaes_10 = CMAESOptions::new(vec![0.0; 10], 1.0).build(dummy_function).unwrap();
-        let cmaes_30 = CMAESOptions::new(vec![0.0; 30], 1.0).build(dummy_function).unwrap();
+        let cmaes_3 = CMAESOptions::new(vec![0.0; 3], 1.0)
+            .build(dummy_function)
+            .unwrap();
+        let cmaes_10 = CMAESOptions::new(vec![0.0; 10], 1.0)
+            .build(dummy_function)
+            .unwrap();
+        let cmaes_30 = CMAESOptions::new(vec![0.0; 30], 1.0)
+            .build(dummy_function)
+            .unwrap();
 
-        assert_eq!(8, cmaes_3.state.evals_per_eigen_update(cmaes_3.parameters()));
-        assert_eq!(15, cmaes_10.state.evals_per_eigen_update(cmaes_10.parameters()));
-        assert_eq!(34, cmaes_30.state.evals_per_eigen_update(cmaes_30.parameters()));
+        assert_eq!(
+            8,
+            cmaes_3.state.evals_per_eigen_update(cmaes_3.parameters())
+        );
+        assert_eq!(
+            15,
+            cmaes_10.state.evals_per_eigen_update(cmaes_10.parameters())
+        );
+        assert_eq!(
+            34,
+            cmaes_30.state.evals_per_eigen_update(cmaes_30.parameters())
+        );
     }
 }
