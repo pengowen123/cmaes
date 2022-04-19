@@ -30,7 +30,7 @@ pub enum InvalidRestartStrategyOptionsError {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```
 /// use cmaes::restart::{RestartOptions, RestartStrategy};
 ///
 /// let strategy = RestartStrategy::BIPOP(Default::default());

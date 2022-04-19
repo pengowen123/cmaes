@@ -14,7 +14,7 @@ const PRINT_GAP_EVALS: usize = 200;
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```
 /// use cmaes::DVector;
 ///
 /// let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
@@ -41,7 +41,7 @@ where
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```
 /// use cmaes::DVector;
 ///
 /// let sphere = |x: &DVector<f64>| x.iter().map(|xi| xi.powi(2)).sum();
@@ -71,7 +71,7 @@ where
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```
 /// use cmaes::DVector;
 ///
 /// let function = |x: &DVector<f64>| 1.0 / x.magnitude();
@@ -99,7 +99,7 @@ where
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```
 /// use cmaes::DVector;
 ///
 /// let function = |x: &DVector<f64>| 1.0 / x.magnitude();
