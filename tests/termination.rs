@@ -1,6 +1,6 @@
 //! Tests for certain termination criteria being reached
 
-use cmaes::{CMAESOptions, ObjectiveFunction, TerminationReason};
+use cmaes::{CMAESOptions, Mode, ObjectiveFunction, TerminationReason};
 use nalgebra::DVector;
 
 use std::thread;
@@ -79,10 +79,22 @@ fn test_max_time() {
 #[test]
 fn test_fun_target() {
     // The function reaches `fun_target` more quickly than the algorithm converges
-    let function = |x: &DVector<f64>| x.magnitude().powi(2);
+    fn function(x: &DVector<f64>) -> f64 {
+        x.magnitude().powi(2)
+    }
     run_test(
         function,
         CMAESOptions::new(vec![5.0; 2], 1.0).fun_target(1e-12),
+        |r| matches!(r, TerminationReason::FunTarget),
+        0,
+    );
+
+    // Test Mode::Maximize with a flipped function and fun_target
+    run_test(
+        (|x| -function(x)) as fn(&DVector<f64>) -> _,
+        CMAESOptions::new(vec![5.0; 2], 1.0)
+            .mode(Mode::Maximize)
+            .fun_target(-1e-12),
         |r| matches!(r, TerminationReason::FunTarget),
         0,
     );
@@ -140,11 +152,22 @@ fn test_tol_fun_hist() {
 #[test]
 fn test_tol_stagnation() {
     // The function is noisy, so it will get worse occasionally
-    let function = |x: &DVector<f64>| 1.0 + x.magnitude() + rand::random::<f64>() * 1e1;
-
+    fn function(x: &DVector<f64>) -> f64 {
+        1.0 + x.magnitude() + rand::random::<f64>() * 1e1
+    }
     run_test(
         function,
         CMAESOptions::new(vec![5.0; 2], 1.0).tol_stagnation(20),
+        |r| matches!(r, TerminationReason::TolStagnation),
+        0,
+    );
+
+    // Test Mode::Maximize with a flipped function
+    run_test(
+        (|x| -function(x)) as fn(&DVector<f64>) -> _,
+        CMAESOptions::new(vec![5.0; 2], 1.0)
+            .mode(Mode::Maximize)
+            .tol_stagnation(20),
         |r| matches!(r, TerminationReason::TolStagnation),
         0,
     );

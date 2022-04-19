@@ -12,7 +12,6 @@ use plotters::prelude::DrawingBackend;
 use plotters::series::LineSeries;
 use plotters::style::{colors, Color, Palette, Palette99};
 
-use std::cmp::Ordering;
 use std::ops::Range;
 
 use super::data::PlotData;
@@ -20,6 +19,7 @@ use super::options::PlotOptions;
 use super::utils::apply_offset;
 use super::{Backend, DrawingError};
 use crate::utils::partial_cmp;
+use crate::Mode;
 
 /// The font to use for text in the plot
 const FONT: &str = "sans-serif";
@@ -55,82 +55,106 @@ enum YAxisKind {
     },
 }
 
-/// Draws all single-dimensioned data to the drawing area (f - min(f), abs(f), abs(median),
+/// Draws all single-dimensioned data to the drawing area (abs(f - best), abs(f), abs(median),
 /// sigma, axis ratio)
 pub fn draw_single_dimensioned<'a>(
+    mode: Mode,
     data: &PlotData,
     area: &DrawingArea<Backend, coord::Shift>,
 ) -> Result<(), DrawingAreaErrorKind<<Backend<'a> as DrawingBackend>::ErrorType>> {
-    let (min_index, min_function_value) = data
+    // (best_index, best_value)
+    let best = data
         .best_function_value()
         .iter()
         .cloned()
         .enumerate()
-        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Greater))
-        .unwrap_or((0, 0.0));
+        .filter(|(_, y)| !y.is_nan())
+        .min_by(|(_, a), (_, b)| mode.sort_cmp(*a, *b));
 
-    // The number of times the minimum function value appears, used to decide whether to include
-    // it in the plot
-    let min_count = data
-        .best_function_value()
-        .iter()
-        .filter(|y| **y == min_function_value)
-        .count();
+    // The number of times the overall best function value appears, used to decide whether to
+    // include it in the plot
+    let best_count = best.map(|(_, best_value)| {
+        data.best_function_value()
+            .iter()
+            .filter(|y| **y == best_value)
+            .count()
+    });
 
-    // Transform from f to f - min(f)
-    let dist_to_min = data
-        .best_function_value()
-        .iter()
-        .map(|y| apply_offset(y - min_function_value));
+    // Transform from f to abs(f - best)
+    let dist_to_best = best.map(|(_, value)| {
+        data.best_function_value()
+            .iter()
+            .map(move |y| apply_offset((y - value).abs()))
+    });
 
     let abs_best_value = data.best_function_value().iter().map(|y| y.abs());
     let abs_median_value = data.median_function_value().iter().map(|y| y.abs());
 
-    // Excludes a few values to not break the range
-    let all_y_values = dist_to_min
+    // Excludes a few values to not break the y-axis range
+    let mut all_y_values = abs_best_value
         .clone()
-        .enumerate()
-        // The minimum value will be drawn if it is reached more than once, so include it in the
-        // range only in that case
-        .filter(|&(i, _)| min_count > 1 || i != min_index)
-        .map(|(_, y)| y)
-        .chain(abs_best_value.clone())
         .chain(abs_median_value.clone())
         .chain(data.sigma().iter().cloned())
         .chain(data.axis_ratio().iter().cloned())
-        // Filter out dummy values added at initialization
-        .filter(|y| !y.is_nan());
+        .collect::<Vec<_>>();
+
+    if let Some(dist) = dist_to_best.clone() {
+        let best_index = best.unwrap().0;
+        all_y_values.extend(
+            dist.enumerate()
+                // The best value will be drawn if it is reached more than once, so include it in the
+                // range only in that case
+                .filter(|&(i, _)| best_count.unwrap() > 1 || i != best_index)
+                .map(|(_, y)| y),
+        );
+    }
+
+    // Filter out dummy values added at initialization
+    let all_y_values = all_y_values.into_iter().filter(|y| !y.is_nan());
     let y_axis = get_log_y_axis(all_y_values);
 
     let draw = |context: &mut ChartContext<_, _>| {
         let function_evals = data.function_evals().iter().cloned();
 
-        // All points to the left of the minimum value
-        // Include the minimum value if it is reached more than once (to avoid ugly discontinuities)
-        let num_left = if min_count > 1 {
-            min_index + 1
-        } else {
-            min_index
-        };
-        let points_dist_left = get_points(
-            function_evals.clone().take(num_left),
-            dist_to_min.clone().take(num_left),
-        );
-        add_to_legend(
-            context.draw_series(LineSeries::new(points_dist_left, &colors::CYAN))?,
-            "f - min(f)",
-            colors::CYAN,
-        );
+        // Distance to overall best function value
+        if let Some(dist) = dist_to_best {
+            let (best_index, best_value) = best.unwrap();
 
-        // All points to the right of the minimum value
-        let num_skip = min_index + 1;
-        let points_dist_right = get_points(
-            function_evals.clone().skip(num_skip),
-            dist_to_min.clone().skip(num_skip),
-        );
-        context.draw_series(LineSeries::new(points_dist_right, &colors::CYAN))?;
+            // All points to the left of the best value
+            // Include the best value if it is reached more than once (to avoid ugly discontinuities)
+            let num_left = if best_count.unwrap() > 1 {
+                best_index + 1
+            } else {
+                best_index
+            };
+            let points_dist_left = get_points(
+                function_evals.clone().take(num_left),
+                dist.clone().take(num_left),
+            );
+            add_to_legend(
+                context.draw_series(LineSeries::new(points_dist_left, &colors::CYAN))?,
+                "abs(f - best)",
+                colors::CYAN,
+            );
 
-        // Best function values
+            // All points to the right of the best value
+            let num_skip = best_index + 1;
+            let points_dist_right = get_points(
+                function_evals.clone().skip(num_skip),
+                dist.clone().skip(num_skip),
+            );
+            context.draw_series(LineSeries::new(points_dist_right, &colors::CYAN))?;
+
+            // Marker for overall best function value
+            if !best_value.is_nan() {
+                let abs_overall_best = (data.function_evals()[best_index], best_value.abs());
+                context
+                    .plotting_area()
+                    .draw(&Cross::new(abs_overall_best, 10, colors::RED))?;
+            }
+        }
+
+        // Per-generation best function values
         let points_abs_best_value = get_points(function_evals.clone(), abs_best_value);
         add_to_legend(
             context.draw_series(LineSeries::new(points_abs_best_value, &colors::BLUE))?,
@@ -145,14 +169,6 @@ pub fn draw_single_dimensioned<'a>(
             "abs(median)",
             colors::MAGENTA,
         );
-
-        // Marker for overall best function value
-        if !min_function_value.is_nan() {
-            let abs_overall_best = (data.function_evals()[min_index], min_function_value.abs());
-            context
-                .plotting_area()
-                .draw(&Cross::new(abs_overall_best, 10, colors::RED))?;
-        }
 
         // Sigma
         let points_sigma = get_points(function_evals.clone(), data.sigma().iter().cloned());
@@ -176,7 +192,7 @@ pub fn draw_single_dimensioned<'a>(
     DrawingAreaSetup {
         area,
         function_evals_history: data.function_evals(),
-        caption: "f - min(f), abs(f), abs(median) Sigma, Axis Ratio",
+        caption: "abs(f - best), abs(f), abs(median) Sigma, Axis Ratio",
         legend_position: Some(SeriesLabelPosition::LowerLeft),
         y_axis,
         draw,
@@ -399,7 +415,7 @@ fn get_log_y_axis<I: Iterator<Item = f64> + Clone>(iter: I) -> YAxis<LogCoord<f6
     let log_max = iter.max_by(|a, b| partial_cmp(*a, *b)).unwrap().log10() + margin;
 
     let num_labels = ((log_max - log_min).round() as usize).min(26);
-    let y_range = (10f64.powf(log_min)..10f64.powf(log_max))
+    let y_range: LogCoord<f64> = (10f64.powf(log_min)..10f64.powf(log_max))
         .log_scale()
         .into();
 

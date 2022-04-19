@@ -5,6 +5,7 @@ use std::ops::RangeInclusive;
 use std::time::Duration;
 
 use super::{RestartStrategy, Restarter};
+use crate::Mode;
 
 /// Represents invalid options for a `Restarter`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,6 +42,8 @@ pub struct RestartOptions {
     pub strategy: RestartStrategy,
     /// The number of dimensions to search.
     pub dimensions: usize,
+    /// The optimization mode. Default value is [`Minimize`][Mode::Minimize].
+    pub mode: Mode,
     /// The range in which to generate the initial mean for each run. The same range is used in each
     /// dimension (i.e., `[A, B]^N`). To scale the search range separately in each dimension, the
     /// appropriate transformation should be made to the objective function itself using
@@ -83,6 +86,7 @@ impl RestartOptions {
         Self {
             strategy,
             dimensions,
+            mode: Mode::Minimize,
             search_range,
             fun_target: None,
             max_function_evals: None,
@@ -92,6 +96,12 @@ impl RestartOptions {
             enable_printing: false,
             seed: None,
         }
+    }
+
+    /// Sets the optimization mode.
+    pub fn mode(mut self, mode: Mode) -> Self {
+        self.mode = mode;
+        self
     }
 
     /// Sets the target objective function value.

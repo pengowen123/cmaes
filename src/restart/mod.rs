@@ -31,8 +31,8 @@ use std::time::{Duration, Instant};
 
 use crate::parameters::Parameters;
 use crate::{
-    utils, CMAESOptions, Individual, ObjectiveFunction, ParallelObjectiveFunction, TerminationData,
-    TerminationReason, CMAES,
+    utils, CMAESOptions, Individual, Mode, ObjectiveFunction, ParallelObjectiveFunction,
+    TerminationData, TerminationReason, CMAES,
 };
 use options::{InvalidRestartOptionsError, InvalidRestartStrategyOptionsError};
 use strategy::{RestartControl, Strategy};
@@ -127,7 +127,11 @@ impl RestartResults {
 pub struct Restarter {
     /// The strategy to use in performing the restarts
     strategy: RestartStrategy,
+    /// The number of dimensions to search
     dimensions: usize,
+    /// The optimization mode
+    mode: Mode,
+    /// The range in which to generate the initial mean for each run
     search_range: RangeInclusive<f64>,
     /// The target objective function value
     fun_target: Option<f64>,
@@ -146,6 +150,8 @@ pub struct Restarter {
     /// Used to generate numbers specifically relevant to performing restarts in addition to
     /// generating seeds for the runs themselves
     rng: ChaChaRng,
+    /// The best individual found so far
+    overall_best: Option<Individual>,
 }
 
 impl Restarter {
@@ -162,6 +168,7 @@ impl Restarter {
             Ok(Self {
                 strategy: options.strategy,
                 dimensions: options.dimensions,
+                mode: options.mode,
                 search_range: options.search_range,
                 fun_target: options.fun_target,
                 max_function_evals: options.max_function_evals,
@@ -171,6 +178,7 @@ impl Restarter {
                 print_info: options.enable_printing,
                 seed,
                 rng: ChaChaRng::seed_from_u64(seed),
+                overall_best: None,
             })
         }
     }
@@ -267,7 +275,6 @@ impl Restarter {
 
         // Initialize results
         let time_started = Instant::now();
-        let mut best_so_far: Option<Individual> = None;
         let reason;
         let mut function_evals = 0;
         let mut runs = 0;
@@ -304,7 +311,9 @@ impl Restarter {
             let seed = self.rng.gen();
 
             // Apply default configuration (may be overridden by individual restart strategies)
-            let mut options = CMAESOptions::new(initial_mean, DEFAULT_INITIAL_STEP_SIZE).seed(seed);
+            let mut options = CMAESOptions::new(initial_mean, DEFAULT_INITIAL_STEP_SIZE)
+                .mode(self.mode)
+                .seed(seed);
             options.max_function_evals = self.max_function_evals_per_run;
             options.max_generations = self.max_generations_per_run;
             options.fun_target = self.fun_target;
@@ -325,13 +334,10 @@ impl Restarter {
 
             // Run CMA-ES
             let search_range_size = (self.search_range.end() - self.search_range.start()).abs();
-            let function = if let Some(function) = objective_function.take() {
-                // Reuse the objective function if it's stored
-                function
-            } else {
-                // Get a fresh one otherwise
-                get_objective_function()
-            };
+            // Reuse the objective function if it's stored or get a fresh one otherwise
+            let function = objective_function
+                .take()
+                .unwrap_or_else(&mut get_objective_function);
             let run_with_print = |cmaes: &mut CMAES<F>| {
                 // Print initial parameters of the run
                 if self.print_info {
@@ -367,23 +373,13 @@ impl Restarter {
             }
 
             if let Some(best) = final_state.overall_best_individual().cloned() {
-                // Update current best individual
-                match best_so_far {
-                    Some(ref mut current_best) => {
-                        if best.value < current_best.value {
-                            *current_best = best;
-                        }
-                    }
-                    None => best_so_far = Some(best),
-                }
+                self.update_best_individual(best);
+            }
 
-                // Check RestartTerminationReason::FunTarget if enabled
-                if let Some(fun_target) = self.fun_target {
-                    if best_so_far.as_ref().unwrap().value <= fun_target {
-                        reason = RestartTerminationReason::FunTarget;
-                        break;
-                    }
-                }
+            // Check RestartTerminationReason::FunTarget if enabled
+            if reasons.iter().any(|&r| r == TerminationReason::FunTarget) {
+                reason = RestartTerminationReason::FunTarget;
+                break;
             }
 
             // Check RestartTerminationReason::MaxRuns
@@ -402,7 +398,7 @@ impl Restarter {
         }
 
         let results = RestartResults {
-            best: best_so_far,
+            best: self.overall_best,
             reason,
             function_evals,
             runs,
@@ -414,6 +410,18 @@ impl Restarter {
         }
 
         results
+    }
+
+    /// Updates the overall best individual
+    fn update_best_individual(&mut self, individual: Individual) {
+        match self.overall_best {
+            Some(ref mut current_best) => {
+                if self.mode.is_better(individual.value, current_best.value) {
+                    *current_best = individual;
+                }
+            }
+            None => self.overall_best = Some(individual),
+        }
     }
 
     /// Prints various parameters of the `Restarter` and its `RestartStrategy`
@@ -629,6 +637,56 @@ mod tests {
             RestartTerminationReason::InvalidFunctionValue,
             results.reason
         );
+    }
+
+    #[test]
+    fn test_fun_target_maximize() {
+        let function = |_: &DVector<f64>| 1.0;
+        let strategy = RestartStrategy::BIPOP(Default::default());
+        let results = RestartOptions::new(1, -1.0..=1.0, strategy)
+            .mode(Mode::Maximize)
+            // Unreachable if mode is minimize
+            .fun_target(-1.0)
+            .build()
+            .unwrap()
+            .run(|| function);
+
+        assert_eq!(RestartTerminationReason::FunTarget, results.reason,);
+    }
+
+    fn update_and_test(restarter: &mut Restarter, new_value: f64, expected: f64) {
+        restarter.update_best_individual(Individual::new(vec![0.0; 4].into(), new_value));
+        assert_eq!(expected, restarter.overall_best.clone().unwrap().value);
+    }
+
+    #[test]
+    fn test_update_best_individual_minimize() {
+        let strategy = RestartStrategy::Local(Local::new(5, None).unwrap());
+        let mut restarter = RestartOptions::new(1, -1.0..=1.0, strategy)
+            .mode(Mode::Minimize)
+            .build()
+            .unwrap();
+
+        assert!(restarter.overall_best.is_none());
+
+        update_and_test(&mut restarter, 1.0, 1.0);
+        update_and_test(&mut restarter, 2.0, 1.0);
+        update_and_test(&mut restarter, 0.0, 0.0);
+    }
+
+    #[test]
+    fn test_update_best_individual_maximize() {
+        let strategy = RestartStrategy::Local(Local::new(5, None).unwrap());
+        let mut restarter = RestartOptions::new(1, -1.0..=1.0, strategy)
+            .mode(Mode::Maximize)
+            .build()
+            .unwrap();
+
+        assert!(restarter.overall_best.is_none());
+
+        update_and_test(&mut restarter, 1.0, 1.0);
+        update_and_test(&mut restarter, 0.0, 1.0);
+        update_and_test(&mut restarter, 2.0, 2.0);
     }
 
     #[test]

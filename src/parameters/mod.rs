@@ -8,6 +8,8 @@ use std::time::Duration;
 
 pub use weights::Weights;
 
+use crate::mode::Mode;
+use crate::{termination, CMAESOptions};
 use weights::{FinalWeights, InitialWeights};
 
 /// Parameters of the termination criteria
@@ -37,10 +39,37 @@ pub(crate) struct TerminationParameters {
     pub tol_condition_cov: f64,
 }
 
+impl TerminationParameters {
+    /// Initializes the `TerminationParameters` with the parameters set in `options`
+    pub fn from_options(options: &CMAESOptions) -> Self {
+        let dimensions = options.initial_mean.len();
+        let tol_x = options.tol_x.unwrap_or(1e-12 * options.initial_step_size);
+        let default_tol_stagnation =
+            termination::get_default_tol_stagnation_option(dimensions, options.population_size);
+        let tol_stagnation = options.tol_stagnation.unwrap_or(default_tol_stagnation);
+
+        Self {
+            max_function_evals: options.max_function_evals,
+            max_generations: options.max_generations,
+            max_time: options.max_time,
+            fun_target: options.fun_target,
+            tol_fun: options.tol_fun,
+            tol_fun_rel: options.tol_fun_rel,
+            tol_fun_hist: options.tol_fun_hist,
+            tol_x,
+            tol_stagnation,
+            tol_x_up: options.tol_x_up,
+            tol_condition_cov: options.tol_condition_cov,
+        }
+    }
+}
+
 /// Stores constant parameters for the algorithm. Obtained by calling
 /// [`CMAES::parameters`][crate::CMAES::parameters].
 #[derive(Clone, Debug)]
 pub struct Parameters {
+    /// Optimization mode
+    mode: Mode,
     /// Number of dimensions to search
     dim: usize,
     /// Population size,
@@ -74,6 +103,8 @@ pub struct Parameters {
 impl Parameters {
     /// Calculates and returns a new set of `Parameters`
     pub(crate) fn new(
+        // TODO: probably just take &CMAESOptions here
+        mode: Mode,
         dim: usize,
         lambda: usize,
         weights: Weights,
@@ -102,6 +133,7 @@ impl Parameters {
         let damp_s = 1.0 + cs + 2.0 * (((mu_eff - 1.0) / (dim as f64 + 1.0)).sqrt() - 1.0).max(0.0);
 
         Parameters {
+            mode,
             dim,
             lambda,
             mu,
@@ -117,6 +149,11 @@ impl Parameters {
             termination,
             seed,
         }
+    }
+
+    /// Returns the optimization mode.
+    pub fn mode(&self) -> Mode {
+        self.mode
     }
 
     /// Returns the problem dimension `N`.

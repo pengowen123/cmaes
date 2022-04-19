@@ -7,8 +7,9 @@ use rand_chacha::ChaCha12Rng;
 use rayon::prelude::*;
 use statrs::distribution::Normal;
 
+use crate::mode::Mode;
 use crate::state::State;
-use crate::{utils, ObjectiveFunction, ParallelObjectiveFunction};
+use crate::{ObjectiveFunction, ParallelObjectiveFunction};
 
 /// A type for sampling and evaluating points from the distribution for each generation
 pub struct Sampler<F> {
@@ -18,7 +19,7 @@ pub struct Sampler<F> {
     population_size: usize,
     /// RNG from which all random numbers are sourced
     rng: ChaCha12Rng,
-    /// The objective function to minimize, used to evaluate points
+    /// The objective function to optimize, used to evaluate points
     objective_function: F,
     /// The number of times the objective function has been evaluated
     function_evals: usize,
@@ -41,6 +42,7 @@ impl<F> Sampler<F> {
     >(
         &mut self,
         state: &State,
+        mode: Mode,
         evaluate_points: P,
     ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
         let normal = Normal::new(0.0, 1.0).unwrap();
@@ -61,7 +63,7 @@ impl<F> Sampler<F> {
 
         self.function_evals += points.len();
 
-        points.sort_by(|a, b| utils::partial_cmp(a.value, b.value));
+        points.sort_by(|a, b| mode.sort_cmp(a.value, b.value));
         Ok(points)
     }
 
@@ -83,8 +85,9 @@ impl<F: ObjectiveFunction> Sampler<F> {
     pub fn sample(
         &mut self,
         state: &State,
+        mode: Mode,
     ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
-        self.sample_internal(state, |y, objective_function| {
+        self.sample_internal(state, mode, |y, objective_function| {
             y.into_iter()
                 .map(|yk| {
                     EvaluatedPoint::new(yk, state.mean(), state.sigma(), |x| {
@@ -101,8 +104,9 @@ impl<F: ParallelObjectiveFunction> Sampler<F> {
     pub fn sample_parallel(
         &mut self,
         state: &State,
+        mode: Mode,
     ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
-        self.sample_internal(state, |y, objective_function| {
+        self.sample_internal(state, mode, |y, objective_function| {
             y.into_par_iter()
                 .map(|yk| {
                     EvaluatedPoint::new(yk, state.mean(), state.sigma(), |x| {
@@ -195,7 +199,7 @@ mod tests {
 
         let n = 5;
         for _ in 0..n {
-            let individuals = sampler.sample(&state).unwrap();
+            let individuals = sampler.sample(&state, Mode::Minimize).unwrap();
 
             assert_eq!(individuals.len(), population_size);
         }
@@ -209,6 +213,43 @@ mod tests {
             1,
         );
 
-        assert!(sampler_nan.sample(&state).is_err());
+        assert!(sampler_nan.sample(&state, Mode::Minimize).is_err());
+    }
+
+    fn sample_sort(mode: Mode, expected: [f64; 5]) {
+        let mut counter = 0.0;
+        let function = |_: &DVector<f64>| {
+            match mode {
+                // Ensure the individuals are unsorted initially by making the function values
+                // improve for later calls
+                Mode::Minimize => counter -= 1.0,
+                Mode::Maximize => counter += 1.0,
+            }
+            counter
+        };
+
+        let dim = 10;
+        let population_size = expected.len();
+
+        let mut sampler = Sampler::new(dim, population_size, function, 1);
+        let state = State::new(vec![0.0; dim].into(), 2.0);
+
+        let individuals = sampler.sample(&state, mode).unwrap();
+        let values = individuals
+            .into_iter()
+            .map(|ind| ind.value)
+            .collect::<Vec<_>>();
+
+        assert_eq!(expected, values.as_slice());
+    }
+
+    #[test]
+    fn test_sample_sort_minimize() {
+        sample_sort(Mode::Minimize, [-5.0, -4.0, -3.0, -2.0, -1.0]);
+    }
+
+    #[test]
+    fn test_sample_sort_maximize() {
+        sample_sort(Mode::Maximize, [5.0, 4.0, 3.0, 2.0, 1.0]);
     }
 }

@@ -90,6 +90,7 @@ impl<'a> TerminationCheck<'a> {
     pub(crate) fn check_termination_criteria(self) -> Vec<TerminationReason> {
         let mut result = Vec::new();
 
+        let mode = self.parameters.mode();
         let dim = self.parameters.dim();
         let lambda = self.parameters.lambda();
         let initial_sigma = self.parameters.initial_sigma();
@@ -131,14 +132,17 @@ impl<'a> TerminationCheck<'a> {
 
         // Check TerminationReason::FunTarget
         if let Some(fun_target) = self.parameters.fun_target() {
-            if self.individuals.iter().any(|ind| ind.value() <= fun_target) {
+            if self
+                .individuals
+                .iter()
+                .any(|ind| mode.is_better(ind.value(), fun_target))
+            {
                 result.push(TerminationReason::FunTarget);
             }
         }
 
-        // Check TerminationReason::TolFun and TerminationReason::TolFunRel
+        // Check TerminationReason::TolFun*
         let past_generations_a = 10 + (30.0 * dim as f64 / lambda as f64).ceil() as usize;
-        let mut range_past_generations_a = None;
 
         if self.history.best_function_values().len() >= past_generations_a {
             let range_history = utils::range(
@@ -149,9 +153,12 @@ impl<'a> TerminationCheck<'a> {
                     .cloned(),
             )
             .unwrap();
-            range_past_generations_a = Some(range_history);
 
             let range_current = utils::range(self.individuals.iter().map(|p| p.value())).unwrap();
+
+            if range_history < tol_fun_hist {
+                result.push(TerminationReason::TolFunHist);
+            }
 
             if range_history < tol_fun && range_current < tol_fun {
                 result.push(TerminationReason::TolFun);
@@ -202,13 +209,6 @@ impl<'a> TerminationCheck<'a> {
             result.push(TerminationReason::NoEffectCoord);
         }
 
-        // Check TerminationReason::TolFunHist
-        if let Some(range) = range_past_generations_a {
-            if range < tol_fun_hist {
-                result.push(TerminationReason::TolFunHist);
-            }
-        }
-
         // Check TerminationReason::TolStagnation
         let tol_stagnation_generations =
             get_tol_stagnation_generations(tol_stagnation, self.state.generation());
@@ -243,7 +243,10 @@ impl<'a> TerminationCheck<'a> {
                         .cloned()
                         .collect::<Vec<_>>();
 
-                    Data::new(first_values).median() > Data::new(last_values).median()
+                    mode.is_better(
+                        Data::new(last_values).median(),
+                        Data::new(first_values).median(),
+                    )
                 };
 
                 if did_values_regress(self.history.best_function_values())
@@ -304,8 +307,10 @@ mod tests {
 
     use super::*;
     use crate::matrix::SquareMatrix;
+    use crate::mode::Mode;
     use crate::parameters::{TerminationParameters, Weights};
     use crate::state::State;
+    use crate::CMAESOptions;
 
     #[test]
     fn test_get_default_tol_stagnation_option() {
@@ -328,48 +333,6 @@ mod tests {
     const DIM: usize = 2;
     const TOL_STAGNATION: usize = 40;
 
-    fn get_parameters(
-        initial_sigma: Option<f64>,
-        max_function_evals: Option<usize>,
-        max_generations: Option<usize>,
-        max_time: Option<Duration>,
-        tol_fun_hist: Option<f64>,
-        tol_stagnation: Option<usize>,
-    ) -> Parameters {
-        let initial_sigma = initial_sigma.unwrap_or(DEFAULT_INITIAL_SIGMA);
-        let lambda = 6;
-        let cm = 1.0;
-        let termination_parameters = TerminationParameters {
-            max_function_evals: max_function_evals,
-            max_generations: max_generations,
-            max_time,
-            fun_target: Some(1e-12),
-            tol_fun: 1e-12,
-            tol_fun_rel: 1e-12,
-            tol_fun_hist: tol_fun_hist.unwrap_or(1e-12),
-            tol_x: 1e-12 * initial_sigma,
-            tol_stagnation: tol_stagnation.unwrap_or(TOL_STAGNATION),
-            tol_x_up: 1e8,
-            tol_condition_cov: 1e14,
-        };
-        Parameters::new(
-            DIM,
-            lambda,
-            Weights::Negative,
-            0,
-            initial_sigma,
-            cm,
-            termination_parameters,
-        )
-    }
-
-    fn get_state(initial_sigma: Option<f64>) -> State {
-        State::new(
-            vec![0.0; DIM].into(),
-            initial_sigma.unwrap_or(DEFAULT_INITIAL_SIGMA),
-        )
-    }
-
     fn get_dummy_generation(function_value: f64) -> Vec<EvaluatedPoint> {
         (0..100)
             .map(|_| {
@@ -384,86 +347,78 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn test_check_termination_criteria_max_function_evals() {
-        let initial_sigma = None;
-        let state = get_state(initial_sigma);
+    /// Sets up the state and parameters using the map_* functions and checks the termination
+    /// criteria
+    fn run_termination_test<S, H, P, R>(
+        mode: Mode,
+        time_created: Option<Instant>,
+        initial_sigma: Option<f64>,
+        current_function_evals: usize,
+        current_generation_function_value: f64,
+        map_state: S,
+        map_history: H,
+        map_parameters: P,
+        map_results: R,
+    ) where
+        S: FnOnce(&mut State),
+        H: FnOnce(&mut History),
+        P: FnOnce(&mut TerminationParameters),
+        R: FnOnce(Vec<TerminationReason>),
+    {
+        let initial_sigma = initial_sigma.unwrap_or(DEFAULT_INITIAL_SIGMA);
+        let initial_mean = DVector::from(vec![0.0; DIM]);
 
-        let current_function_evals = 100;
+        let mut state = State::new(initial_mean.clone(), initial_sigma);
+        map_state(&mut state);
 
-        assert_eq!(
-            TerminationCheck {
-                current_function_evals,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, Some(100), None, None, None, None),
-                state: &state,
-                history: &History::new(),
-                individuals: &get_dummy_generation(1.0),
-            }
-            .check_termination_criteria(),
-            vec![TerminationReason::MaxFunctionEvals],
+        let mut history = History::new();
+        map_history(&mut history);
+
+        // Take most default parameters from default CMAESOptions
+        let options = CMAESOptions::new(initial_mean, initial_sigma).tol_stagnation(TOL_STAGNATION);
+        let mut termination_parameters = TerminationParameters::from_options(&options);
+        map_parameters(&mut termination_parameters);
+
+        let lambda = 6;
+        let cm = 1.0;
+        let parameters = Parameters::new(
+            mode,
+            DIM,
+            lambda,
+            Weights::Negative,
+            0,
+            initial_sigma,
+            cm,
+            termination_parameters,
         );
-    }
 
-    #[test]
-    fn test_check_termination_criteria_max_generations() {
-        let initial_sigma = None;
-        let mut state = get_state(initial_sigma);
+        let results = TerminationCheck {
+            current_function_evals,
+            time_created: time_created.unwrap_or_else(Instant::now),
+            parameters: &parameters,
+            state: &state,
+            history: &history,
+            individuals: &get_dummy_generation(current_generation_function_value),
+        }
+        .check_termination_criteria();
 
-        *state.mut_generation() = 100;
-
-        assert_eq!(
-            TerminationCheck {
-                current_function_evals: 0,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, Some(100), None, None, None),
-                state: &state,
-                history: &History::new(),
-                individuals: &get_dummy_generation(1.0),
-            }
-            .check_termination_criteria(),
-            vec![TerminationReason::MaxGenerations],
-        );
-    }
-
-    #[test]
-    fn test_check_termination_criteria_max_time() {
-        let initial_sigma = None;
-        let state = get_state(initial_sigma);
-
-        let max_time = Duration::from_secs(4);
-        let time_started = Instant::now() - Duration::from_secs(5);
-
-        assert_eq!(
-            TerminationCheck {
-                current_function_evals: 0,
-                time_created: time_started,
-                parameters: &get_parameters(initial_sigma, None, None, Some(max_time), None, None),
-                state: &state,
-                history: &History::new(),
-                individuals: &get_dummy_generation(1.0),
-            }
-            .check_termination_criteria(),
-            vec![TerminationReason::MaxTime],
-        );
+        map_results(results);
     }
 
     #[test]
     fn test_check_termination_criteria_none() {
         // A fresh state should not meet any termination criteria
-        let initial_sigma = None;
-        let state = get_state(initial_sigma);
-
-        assert!(TerminationCheck {
-            current_function_evals: 0,
-            time_created: Instant::now(),
-            parameters: &get_parameters(initial_sigma, None, None, None, None, None),
-            state: &state,
-            history: &History::new(),
-            individuals: &get_dummy_generation(1.0),
-        }
-        .check_termination_criteria()
-        .is_empty());
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            None,
+            400,
+            1.0,
+            |_| {},
+            |_| {},
+            |_| {},
+            |results| assert!(results.is_empty()),
+        );
     }
 
     #[test]
@@ -471,70 +426,133 @@ mod tests {
         // A large standard deviation in one axis should not meet any termination criteria if the
         // initial step size was also large
         let initial_sigma = Some(1e3);
-        let mut state = get_state(initial_sigma);
 
-        *state.mut_sigma() = 1e4;
-        state
-            .mut_cov()
-            .set_cov(
-                SquareMatrix::from_iterator(2, 2, [0.01, 0.0, 0.0, 1e4]),
-                true,
-            )
-            .unwrap();
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            initial_sigma,
+            400,
+            1.0,
+            |state| {
+                *state.mut_sigma() = 1e6;
+                state
+                    .mut_cov()
+                    .set_cov(
+                        SquareMatrix::from_iterator(DIM, DIM, [0.01, 0.0, 0.0, 1e6]),
+                        true,
+                    )
+                    .unwrap();
+            },
+            |_| {},
+            |_| {},
+            |results| assert!(results.is_empty()),
+        );
+    }
 
-        assert!(TerminationCheck {
-            current_function_evals: 0,
-            time_created: Instant::now(),
-            parameters: &get_parameters(initial_sigma, None, None, None, None, None),
-            state: &state,
-            history: &History::new(),
-            individuals: &get_dummy_generation(1.0),
-        }
-        .check_termination_criteria()
-        .is_empty());
+    #[test]
+    fn test_check_termination_criteria_max_function_evals() {
+        let current_function_evals = 100;
+
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            None,
+            current_function_evals,
+            1.0,
+            |_| {},
+            |_| {},
+            |params| params.max_function_evals = Some(current_function_evals),
+            |results| assert_eq!(results, &[TerminationReason::MaxFunctionEvals]),
+        );
+    }
+
+    #[test]
+    fn test_check_termination_criteria_max_generations() {
+        let current_generation = 100;
+
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            None,
+            400,
+            1.0,
+            |state| *state.mut_generation() = current_generation,
+            |_| {},
+            |params| params.max_generations = Some(current_generation),
+            |results| assert_eq!(results, &[TerminationReason::MaxGenerations]),
+        );
+    }
+
+    #[test]
+    fn test_check_termination_criteria_max_time() {
+        let max_time = Duration::from_secs(4);
+        let time_created = Instant::now() - Duration::from_secs(5);
+
+        run_termination_test(
+            Mode::Minimize,
+            Some(time_created),
+            None,
+            400,
+            1.0,
+            |_| {},
+            |_| {},
+            |params| params.max_time = Some(max_time),
+            |results| assert_eq!(results, &[TerminationReason::MaxTime]),
+        );
     }
 
     #[test]
     fn test_check_termination_criteria_fun_target() {
-        // A best function value below a threshold produces FunTarget
-        let initial_sigma = None;
-        let state = get_state(initial_sigma);
+        // A best function value better than the threshold produces FunTarget
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            None,
+            400,
+            1e-15,
+            |_| {},
+            |_| {},
+            |params| params.fun_target = Some(1e-12),
+            |results| assert_eq!(results, &[TerminationReason::FunTarget]),
+        );
 
-        assert_eq!(
-            TerminationCheck {
-                current_function_evals: 0,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
-                state: &state,
-                history: &History::new(),
-                individuals: &get_dummy_generation(1e-16),
-            }
-            .check_termination_criteria(),
-            vec![TerminationReason::FunTarget],
+        run_termination_test(
+            Mode::Maximize,
+            None,
+            None,
+            400,
+            25.0,
+            |_| {},
+            |_| {},
+            |params| params.fun_target = Some(10.0),
+            |results| assert_eq!(results, &[TerminationReason::FunTarget]),
         );
     }
 
     #[test]
     fn test_check_termination_criteria_tol_fun() {
         // Small ranges of current and historical function values produces TolFun
-        let initial_sigma = None;
-        let state = get_state(initial_sigma);
+        let historical_best = 1.0;
+        let most_recent_best = historical_best - 1e-13;
 
-        let mut history = History::new();
-        history.mut_best_function_values().extend(vec![1.0; 100]);
-        history.mut_best_function_values().push_front(1.0 + 1e-13);
-
-        assert_eq!(
-            TerminationCheck {
-                current_function_evals: 0,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, Some(0.0), None),
-                state: &state,
-                history: &history,
-                individuals: &get_dummy_generation(history.best_function_values()[0]),
-            }
-            .check_termination_criteria(),
-            vec![TerminationReason::TolFun],
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            None,
+            400,
+            most_recent_best,
+            |_| {},
+            |history| {
+                history
+                    .mut_best_function_values()
+                    .extend(vec![historical_best; 100]);
+                history
+                    .mut_best_function_values()
+                    .push_front(most_recent_best);
+            },
+            // TolFunHist must be disabled because it overlaps
+            |params| params.tol_fun_hist = 0.0,
+            |results| assert_eq!(results, &[TerminationReason::TolFun]),
         );
     }
 
@@ -542,135 +560,134 @@ mod tests {
     fn test_check_termination_criteria_tol_fun_rel() {
         // Small ranges of current and historical function values relative to the overall
         // improvement in median function value produces TolFunRel
-        let initial_sigma = None;
-        let state = get_state(initial_sigma);
+        let historical_best = 1.0;
+        // Outside the range of TolFun/TolFunHist
+        let most_recent_best = historical_best - 0.01;
 
-        let mut history = History::new();
-        history.mut_best_function_values().extend(vec![1.0; 100]);
-        // Outside the range of TolFun
-        history.mut_best_function_values().push_front(1.01);
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            None,
+            400,
+            most_recent_best,
+            |_| {},
+            |history| {
+                // A very large improvement increases the range of TolFunRel
+                *history.mut_first_median_function_value() = Some(1e12);
+                *history.mut_best_median_function_value() = Some(1.0);
 
-        // A very large improvement increases the range of TolFunRel
-        *history.mut_first_median_function_value() = Some(1e12);
-        *history.mut_best_median_function_value() = Some(1.0);
-
-        assert_eq!(
-            TerminationCheck {
-                current_function_evals: 0,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
-                state: &state,
-                history: &history,
-                individuals: &get_dummy_generation(history.best_function_values()[0]),
-            }
-            .check_termination_criteria(),
-            vec![TerminationReason::TolFunRel],
+                history
+                    .mut_best_function_values()
+                    .extend(vec![historical_best; 100]);
+                history
+                    .mut_best_function_values()
+                    .push_front(most_recent_best);
+            },
+            |params| params.tol_fun_rel = 1e-12,
+            |results| assert_eq!(results, &[TerminationReason::TolFunRel]),
         );
     }
 
     #[test]
     fn test_check_termination_criteria_tol_fun_hist() {
         // A small range of historical best values produces TolFunHist
-        let initial_sigma = None;
-        let state = get_state(initial_sigma);
+        let historical_best = 1.0;
+        let most_recent_best = historical_best - 1e-13;
 
-        let mut history = History::new();
-        history.mut_best_function_values().extend(vec![1.0; 100]);
-        history.mut_best_function_values().push_front(1.01);
-
-        assert_eq!(
-            TerminationCheck {
-                current_function_evals: 0,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, Some(0.05), None),
-                state: &state,
-                history: &history,
-                individuals: &get_dummy_generation(1.0),
-            }
-            .check_termination_criteria(),
-            vec![TerminationReason::TolFunHist],
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            None,
+            400,
+            historical_best,
+            |_| {},
+            |history| {
+                history
+                    .mut_best_function_values()
+                    .extend(vec![historical_best; 100]);
+                history
+                    .mut_best_function_values()
+                    .push_front(most_recent_best);
+            },
+            // TolFun must be disabled because it overlaps
+            |params| params.tol_fun = 0.0,
+            |results| assert_eq!(results, &[TerminationReason::TolFunHist]),
         );
     }
 
     #[test]
     fn test_check_termination_criteria_tol_x() {
-        // A small step size and evolution path produces TolX
-        let initial_sigma = None;
-        let mut state = get_state(initial_sigma);
-
-        *state.mut_sigma() = 1e-13;
-
-        assert_eq!(
-            TerminationCheck {
-                current_function_evals: 0,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
-                state: &state,
-                history: &History::new(),
-                individuals: &get_dummy_generation(1.0),
-            }
-            .check_termination_criteria(),
-            vec![TerminationReason::TolX],
+        // A small step size and evolution path (zero length in this case) produces TolX
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            None,
+            400,
+            1.0,
+            |state| *state.mut_sigma() = 1e-13,
+            |_| {},
+            |_| {},
+            |results| assert_eq!(results, &[TerminationReason::TolX]),
         );
     }
 
-    #[test]
-    fn test_check_termination_criteria_tol_stagnation() {
-        // Median/best function values that don't improve over many generations produces
+    fn check_termination_criteria_tol_stagnation(mode: Mode, historical_values: [f64; 4]) {
+        // Median/best function values that worsen or don't improve over many generations produces
         // TolStagnation
-        let initial_sigma = None;
-        let mut state = get_state(initial_sigma);
-
-        let mut history = History::new();
-        let mut values = Vec::new();
-        values.extend(vec![3.0; TOL_STAGNATION / 4]);
-        values.extend(vec![2.0; TOL_STAGNATION / 4]);
-        values.extend(vec![1.0; TOL_STAGNATION / 4]);
-        values.extend(vec![0.0; TOL_STAGNATION / 4]);
-        *history.mut_best_function_values() = values.clone().into();
-        *history.mut_median_function_values() = values.clone().into();
-
         // TolStagnation is disabled until the generation is high enough
-        *state.mut_generation() = TOL_STAGNATION * 5;
-
-        let mut termination_check = TerminationCheck {
-            current_function_evals: 0,
-            time_created: Instant::now(),
-            parameters: &get_parameters(initial_sigma, None, None, None, None, None),
-            state: &state,
-            history: &history,
-            individuals: &get_dummy_generation(1.0),
+        let map_state = |state: &mut State| *state.mut_generation() = TOL_STAGNATION * 5;
+        let map_history = |history: &mut History| {
+            let mut values = Vec::new();
+            values.extend(vec![historical_values[0]; TOL_STAGNATION / 4]);
+            values.extend(vec![historical_values[1]; TOL_STAGNATION / 4]);
+            values.extend(vec![historical_values[2]; TOL_STAGNATION / 4]);
+            values.extend(vec![historical_values[3]; TOL_STAGNATION / 4]);
+            *history.mut_best_function_values() = values.clone().into();
+            *history.mut_median_function_values() = values.clone().into();
         };
-        assert_eq!(
-            termination_check.clone().check_termination_criteria(),
-            vec![TerminationReason::TolStagnation],
-        );
 
+        let run = |tol_stagnation, expected: &[TerminationReason]| {
+            run_termination_test(
+                mode,
+                None,
+                None,
+                400,
+                1.0,
+                map_state,
+                map_history,
+                |params| params.tol_stagnation = tol_stagnation,
+                |results| assert_eq!(results, expected),
+            );
+        };
+
+        run(TOL_STAGNATION, &[TerminationReason::TolStagnation]);
         // Check that no panic occurs if tol_stagnation is 0
-        let parameters_0 = get_parameters(initial_sigma, None, None, None, None, Some(0));
-        termination_check.parameters = &parameters_0;
-        assert!(termination_check.check_termination_criteria().is_empty());
+        run(0, &[]);
+    }
+
+    #[test]
+    fn test_check_termination_criteria_tol_stagnation_minimize() {
+        check_termination_criteria_tol_stagnation(Mode::Minimize, [3.0, 2.0, 1.0, 0.0]);
+    }
+
+    #[test]
+    fn test_check_termination_criteria_tol_stagnation_maximize() {
+        check_termination_criteria_tol_stagnation(Mode::Maximize, [0.0, 1.0, 2.0, 3.0]);
     }
 
     #[test]
     fn test_check_termination_criteria_tol_x_up() {
         // A large increase in maximum standard deviation produces TolXUp
-        let initial_sigma = None;
-        let mut state = get_state(initial_sigma);
-
-        *state.mut_sigma() = 1e8;
-
-        assert_eq!(
-            TerminationCheck {
-                current_function_evals: 0,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
-                state: &state,
-                history: &History::new(),
-                individuals: &get_dummy_generation(1.0),
-            }
-            .check_termination_criteria(),
-            vec![TerminationReason::TolXUp],
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            None,
+            400,
+            1.0,
+            |state| *state.mut_sigma() = 1e8,
+            |_| {},
+            |_| {},
+            |results| assert_eq!(results, &[TerminationReason::TolXUp]),
         );
     }
 
@@ -678,104 +695,96 @@ mod tests {
     fn test_check_termination_criteria_no_effect_axis() {
         // A lack of available precision along a principal axis in the distribution produces
         // NoEffectAxis
-        let initial_sigma = None;
-        let mut state = get_state(initial_sigma);
-
-        *state.mut_mean() = vec![100.0; 2].into();
-        *state.mut_sigma() = 1e-10;
-
-        let eigenvectors = SquareMatrix::from_columns(&[
-            DVector::from(vec![3.0, 2.0]).normalize(),
-            DVector::from(vec![-2.0, 3.0]).normalize(),
-        ]);
-        let sqrt_eigenvalues = SquareMatrix::from_diagonal(&vec![1e-1, 1e-6].into());
-        let cov = &eigenvectors * sqrt_eigenvalues.pow(2) * eigenvectors.transpose();
-        state.mut_cov().set_cov(cov, true).unwrap();
-
-        let mut terminated = false;
+        let mut terminated_count = 0;
         for g in 0..DIM {
-            *state.mut_generation() = g;
+            run_termination_test(
+                Mode::Minimize,
+                None,
+                None,
+                400,
+                1.0,
+                |state| {
+                    // Change the axis being checked
+                    *state.mut_generation() = g;
 
-            let termination_reasons = TerminationCheck {
-                current_function_evals: 0,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
-                state: &state,
-                history: &History::new(),
-                individuals: &get_dummy_generation(1.0),
-            }
-            .check_termination_criteria();
+                    // Shrink the distribution and reduce available precision by moving the mean
+                    *state.mut_mean() = vec![100.0; 2].into();
+                    *state.mut_sigma() = 1e-10;
 
-            if !termination_reasons.is_empty() {
-                assert_eq!(termination_reasons, vec![TerminationReason::NoEffectAxis]);
-                terminated = true;
-            }
+                    // Adjust the shape of the distribution to not be coordinate-axis-aligned
+                    let eigenvectors = SquareMatrix::from_columns(&[
+                        DVector::from(vec![3.0, 2.0]).normalize(),
+                        DVector::from(vec![-2.0, 3.0]).normalize(),
+                    ]);
+                    // Adjust the distribution axis scales
+                    let sqrt_eigenvalues = SquareMatrix::from_diagonal(&vec![1e-1, 1e-6].into());
+                    let cov = &eigenvectors * sqrt_eigenvalues.pow(2) * eigenvectors.transpose();
+                    state.mut_cov().set_cov(cov, true).unwrap();
+                },
+                |_| {},
+                |_| {},
+                |results| {
+                    if !results.is_empty() {
+                        assert_eq!(results, &[TerminationReason::NoEffectAxis]);
+                        terminated_count += 1;
+                    }
+                },
+            );
         }
-        assert!(terminated);
+
+        // Only one axis should match
+        assert_eq!(terminated_count, 1);
     }
 
     #[test]
     fn test_check_termination_criteria_no_effect_coord() {
         // A lack of available precision along a coordinate axis in the distribution produces
         // NoEffectCoord
-        let initial_sigma = None;
-        let mut state = get_state(initial_sigma);
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            None,
+            400,
+            1.0,
+            |state| {
+                // Reduce available precision by moving the mean
+                *state.mut_mean() = vec![100.0; 2].into();
 
-        *state.mut_mean() = vec![100.0; 2].into();
-
-        let eigenvectors = SquareMatrix::<f64>::identity(2, 2);
-        let sqrt_eigenvalues = SquareMatrix::from_diagonal(&vec![1e-4, 1e-10].into());
-        let cov = &eigenvectors * sqrt_eigenvalues.pow(2) * eigenvectors.transpose();
-        state.mut_cov().set_cov(cov, true).unwrap();
-
-        let mut terminated = false;
-        for g in 0..DIM {
-            *state.mut_generation() = g;
-
-            let termination_reasons = TerminationCheck {
-                current_function_evals: 0,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
-                state: &state,
-                history: &History::new(),
-                individuals: &get_dummy_generation(1.0),
-            }
-            .check_termination_criteria();
-
-            if !termination_reasons.is_empty() {
-                assert_eq!(termination_reasons, vec![TerminationReason::NoEffectCoord]);
-                terminated = true;
-            }
-        }
-        assert!(terminated);
+                // Adjust the coordinate axis scales (the eigenvectors are
+                // coordinate-axis-aligned)
+                let eigenvectors = SquareMatrix::<f64>::identity(2, 2);
+                let sqrt_eigenvalues = SquareMatrix::from_diagonal(&vec![1e-4, 1e-10].into());
+                let cov = &eigenvectors * sqrt_eigenvalues.pow(2) * eigenvectors.transpose();
+                state.mut_cov().set_cov(cov, true).unwrap();
+            },
+            |_| {},
+            |_| {},
+            |results| assert_eq!(results, &[TerminationReason::NoEffectCoord]),
+        );
     }
 
     #[test]
     fn test_check_termination_criteria_tol_condition_cov() {
         // A large difference between the maximum and minimum standard deviations produces
         // TolConditionCov
-        let initial_sigma = None;
-        let mut state = get_state(initial_sigma);
-
-        state
-            .mut_cov()
-            .set_cov(
-                SquareMatrix::from_iterator(2, 2, [0.99, 0.0, 0.0, 1e14]),
-                true,
-            )
-            .unwrap();
-
-        assert_eq!(
-            TerminationCheck {
-                current_function_evals: 0,
-                time_created: Instant::now(),
-                parameters: &get_parameters(initial_sigma, None, None, None, None, None),
-                state: &state,
-                history: &History::new(),
-                individuals: &get_dummy_generation(1.0),
-            }
-            .check_termination_criteria(),
-            vec![TerminationReason::TolConditionCov],
+        run_termination_test(
+            Mode::Minimize,
+            None,
+            None,
+            400,
+            1.0,
+            |state| {
+                state
+                    .mut_cov()
+                    .set_cov(
+                        SquareMatrix::from_iterator(2, 2, [0.99, 0.0, 0.0, 1e14]),
+                        true,
+                    )
+                    .unwrap();
+            },
+            |_| {},
+            |_| {},
+            |results| assert_eq!(results, &[TerminationReason::TolConditionCov]),
         );
     }
 }

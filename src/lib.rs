@@ -1,13 +1,13 @@
-//! An implementation of the CMA-ES optimization algorithm. It is used to minimize the value of an
-//! objective function and performs well on high-dimension, non-linear, non-convex, ill-conditioned,
-//! and/or noisy problems.
+//! An implementation of the CMA-ES optimization algorithm. It is used to minimize or maximize the
+//! value of an objective function and performs well on high-dimension, non-linear, non-convex,
+//! ill-conditioned, and/or noisy problems.
 //!
 //! # Overview
 //!
 //! There are three main ways to use `cmaes`:
 //!
 //! The quickest and easiest way is to use a convenience function provided in the [`functions`]
-//! module, such as [`fmin`][crate::functions::fmin]:
+//! module, such as [`fmin`][crate::functions::fmin] or [`fmax`][crate::functions::fmax]:
 //!
 //! ```no_run
 //! use cmaes::DVector;
@@ -69,8 +69,8 @@
 //! each particular problem (though this is usually unnecessary beyond changing the initial mean and
 //! step size).
 //!
-//! The [`objective_function`] module provides traits that allow for custom objective function
-//! types that store state and parameters.
+//! The [`objective_function`] module provides traits that allow for custom objective function types
+//! that store state and parameters.
 //!
 //! The [`CMAES::next`] method provides finer control over iteration if needed.
 //!
@@ -105,6 +105,7 @@
 pub mod functions;
 mod history;
 mod matrix;
+mod mode;
 pub mod objective_function;
 pub mod options;
 pub mod parameters;
@@ -119,6 +120,7 @@ pub use nalgebra::DVector;
 
 pub use crate::functions::*;
 pub use crate::history::MAX_HISTORY_LENGTH;
+pub use crate::mode::Mode;
 pub use crate::objective_function::{ObjectiveFunction, ParallelObjectiveFunction};
 pub use crate::options::CMAESOptions;
 pub use crate::parameters::Weights;
@@ -246,24 +248,9 @@ impl<F> CMAES<F> {
         );
 
         // Initialize constant parameters according to the options
-        let tol_x = options.tol_x.unwrap_or(1e-12 * options.initial_step_size);
-        let default_tol_stagnation =
-            termination::get_default_tol_stagnation_option(dimensions, options.population_size);
-        let tol_stagnation = options.tol_stagnation.unwrap_or(default_tol_stagnation);
-        let termination_parameters = TerminationParameters {
-            max_function_evals: options.max_function_evals,
-            max_generations: options.max_generations,
-            max_time: options.max_time,
-            fun_target: options.fun_target,
-            tol_fun: options.tol_fun,
-            tol_fun_rel: options.tol_fun_rel,
-            tol_fun_hist: options.tol_fun_hist,
-            tol_x,
-            tol_stagnation,
-            tol_x_up: options.tol_x_up,
-            tol_condition_cov: options.tol_condition_cov,
-        };
+        let termination_parameters = TerminationParameters::from_options(&options);
         let parameters = Parameters::new(
+            options.mode,
             dimensions,
             options.population_size,
             options.weights,
@@ -280,7 +267,9 @@ impl<F> CMAES<F> {
         let history = History::new();
 
         // Initialize plot if enabled
-        let plot = options.plot_options.map(|o| Plot::new(dimensions, o));
+        let plot = options
+            .plot_options
+            .map(|o| Plot::new(dimensions, o, options.mode));
 
         let mut cmaes = Self {
             sampler,
@@ -317,7 +306,7 @@ impl<F> CMAES<F> {
     /// Shared logic between `sample` and `sample_parallel`
     fn sample_internal(&mut self, individuals: &[EvaluatedPoint]) {
         // Update histories
-        self.history.update(individuals);
+        self.history.update(self.parameters.mode(), individuals);
     }
 
     /// Shared logic between `next` and `next_parallel`
@@ -609,7 +598,7 @@ impl<F: ObjectiveFunction> CMAES<F> {
     /// Returns `Err` if an invalid function value was encountered.
     fn sample(&mut self) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
         // Sample points
-        let individuals = self.sampler.sample(&self.state)?;
+        let individuals = self.sampler.sample(&self.state, self.parameters.mode())?;
 
         self.sample_internal(&individuals);
 
@@ -657,7 +646,9 @@ impl<F: ParallelObjectiveFunction> CMAES<F> {
 
     /// Like `sample`, but evaluates the sampled points using multiple threads
     fn sample_parallel(&mut self) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
-        let individuals = self.sampler.sample_parallel(&self.state)?;
+        let individuals = self
+            .sampler
+            .sample_parallel(&self.state, self.parameters.mode())?;
 
         self.sample_internal(&individuals);
 

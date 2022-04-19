@@ -2,6 +2,7 @@
 
 use std::collections::VecDeque;
 
+use crate::mode::Mode;
 use crate::sampling::EvaluatedPoint;
 use crate::Individual;
 
@@ -73,7 +74,7 @@ impl History {
 
     /// Updates the histories based on the current generation of individuals. Assumes that
     /// `current_generation` is already sorted by objective function value.
-    pub fn update(&mut self, current_generation: &[EvaluatedPoint]) {
+    pub fn update(&mut self, mode: Mode, current_generation: &[EvaluatedPoint]) {
         let best = &current_generation[0];
 
         self.best_function_values.push_front(best.value());
@@ -96,20 +97,20 @@ impl History {
         self.first_median_function_value = self.first_median_function_value.or(Some(median_value));
 
         match self.best_median_function_value {
-            Some(ref mut value) => *value = value.min(median_value),
+            Some(ref mut value) => *value = mode.choose_best(*value, median_value),
             None => self.best_median_function_value = Some(median_value),
         }
 
-        self.update_best_individuals(Individual::new(best.point().clone(), best.value()));
+        self.update_best_individuals(mode, Individual::new(best.point().clone(), best.value()));
     }
 
     /// Updates the current and overall best individuals
-    fn update_best_individuals(&mut self, current_best: Individual) {
+    fn update_best_individuals(&mut self, mode: Mode, current_best: Individual) {
         self.current_best_individual = Some(current_best.clone());
 
         match &mut self.overall_best_individual {
             Some(ref mut overall) => {
-                if current_best.value < overall.value {
+                if mode.is_better(current_best.value, overall.value) {
                     *overall = current_best;
                 }
             }
@@ -144,8 +145,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_update() {
+    fn update_shared(mode: Mode, expected_best: f64, expected_median: f64) {
         let mut history = History::new();
 
         assert!(history.best_function_values().is_empty());
@@ -153,23 +153,30 @@ mod tests {
 
         let mut counter = 0.0;
         let mut function = |_: &DVector<f64>| {
-            counter -= 1.0;
+            match mode {
+                Mode::Minimize => counter -= 1.0,
+                Mode::Maximize => counter += 1.0,
+            }
             counter
         };
 
         let mut update = |h: &mut History| {
-            h.update(&[
+            let mut generation = [
                 EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
                     .unwrap(),
                 EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
                     .unwrap(),
-            ]);
+            ];
+
+            generation.sort_by(|a, b| mode.sort_cmp(a.value(), b.value()));
+
+            h.update(mode, &generation);
         };
 
         update(&mut history);
 
-        assert_eq!(-1.0, history.best_function_values()[0]);
-        assert_eq!(-1.5, history.median_function_values()[0]);
+        assert_eq!(expected_best, history.best_function_values()[0]);
+        assert_eq!(expected_median, history.median_function_values()[0]);
 
         for _ in 0..MAX_HISTORY_LENGTH + 5 {
             update(&mut history);
@@ -180,39 +187,69 @@ mod tests {
     }
 
     #[test]
-    fn test_update_best_individuals() {
+    fn test_update_minimize() {
+        update_shared(Mode::Minimize, -2.0, -1.5);
+    }
+
+    #[test]
+    fn test_update_maximize() {
+        update_shared(Mode::Maximize, 2.0, 1.5);
+    }
+
+    fn update_and_test(
+        mode: Mode,
+        history: &mut History,
+        current_best: f64,
+        expected_current_best: f64,
+        expected_overall_best: f64,
+    ) {
+        history.update_best_individuals(mode, Individual::new(DVector::zeros(4), current_best));
+        assert_eq!(
+            history.current_best_individual().unwrap().value,
+            expected_current_best
+        );
+        assert_eq!(
+            history.overall_best_individual().unwrap().value,
+            expected_overall_best
+        );
+    }
+
+    #[test]
+    fn test_update_best_individuals_minimize() {
         let mut history = History::new();
-        let origin = DVector::from(vec![0.0; 10]);
+        let mode = Mode::Minimize;
 
         assert!(history.current_best_individual().is_none());
         assert!(history.overall_best_individual().is_none());
 
-        history.update_best_individuals(Individual::new(origin.clone(), 7.0));
-        assert_eq!(history.current_best_individual().unwrap().value, 7.0);
-        assert_eq!(history.overall_best_individual().unwrap().value, 7.0);
-
-        history.update_best_individuals(Individual::new(origin.clone(), 1.0));
-        assert_eq!(history.current_best_individual().unwrap().value, 1.0);
-        assert_eq!(history.overall_best_individual().unwrap().value, 1.0);
-
-        history.update_best_individuals(Individual::new(origin.clone(), 2.0));
-        assert_eq!(history.current_best_individual().unwrap().value, 2.0);
-        assert_eq!(history.overall_best_individual().unwrap().value, 1.0);
-
-        history.update_best_individuals(Individual::new(origin.clone(), 1.5));
-        assert_eq!(history.current_best_individual().unwrap().value, 1.5);
-        assert_eq!(history.overall_best_individual().unwrap().value, 1.0);
-
-        history.update_best_individuals(Individual::new(origin.clone(), 0.5));
-        assert_eq!(history.current_best_individual().unwrap().value, 0.5);
-        assert_eq!(history.overall_best_individual().unwrap().value, 0.5);
+        update_and_test(mode, &mut history, 1.0, 1.0, 1.0);
+        update_and_test(mode, &mut history, 2.0, 2.0, 1.0);
+        update_and_test(mode, &mut history, 1.5, 1.5, 1.0);
+        update_and_test(mode, &mut history, 0.5, 0.5, 0.5);
     }
 
     #[test]
-    fn test_median_value_decreasing() {
+    fn test_update_best_individuals_maximize() {
+        let mut history = History::new();
+        let mode = Mode::Maximize;
+
+        assert!(history.current_best_individual().is_none());
+        assert!(history.overall_best_individual().is_none());
+
+        update_and_test(mode, &mut history, 3.0, 3.0, 3.0);
+        update_and_test(mode, &mut history, 2.0, 2.0, 3.0);
+        update_and_test(mode, &mut history, 2.5, 2.5, 3.0);
+        update_and_test(mode, &mut history, 4.0, 4.0, 4.0);
+    }
+
+    fn median_value_improving(mode: Mode) {
         let mut counter = 0.0;
         let mut function = |_: &DVector<f64>| {
-            counter -= 1.0;
+            match mode {
+                // The value improves with each call
+                Mode::Minimize => counter -= 1.0,
+                Mode::Maximize => counter += 1.0,
+            }
             counter
         };
         let mut history = History::new();
@@ -220,13 +257,13 @@ mod tests {
         assert!(history.first_median_function_value().is_none());
         assert!(history.best_median_function_value().is_none());
 
-        history.update(&[EvaluatedPoint::new(
-            DVector::zeros(4),
-            &DVector::zeros(4),
-            0.0,
-            &mut function,
-        )
-        .unwrap()]);
+        history.update(
+            mode,
+            &[
+                EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
+                    .unwrap(),
+            ],
+        );
 
         // For the first generation both values are equal
         let first = history.first_median_function_value().unwrap();
@@ -234,50 +271,73 @@ mod tests {
 
         assert_eq!(first, best);
 
-        history.update(&[EvaluatedPoint::new(
-            DVector::zeros(4),
-            &DVector::zeros(4),
-            0.0,
-            &mut function,
-        )
-        .unwrap()]);
+        history.update(
+            mode,
+            &[
+                EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
+                    .unwrap(),
+            ],
+        );
 
         // For subsequent generations only the best value improves
         assert_eq!(first, history.first_median_function_value().unwrap());
-        assert!(best > history.best_median_function_value().unwrap());
+        assert!(mode.is_better(history.best_median_function_value().unwrap(), best));
     }
 
     #[test]
-    fn test_median_value_increasing() {
+    fn test_median_value_improving_minimize() {
+        median_value_improving(Mode::Minimize);
+    }
+
+    #[test]
+    fn test_median_value_improving_maximize() {
+        median_value_improving(Mode::Maximize);
+    }
+
+    fn median_value_worsening(mode: Mode) {
         let mut counter = 0.0;
         let mut function = |_: &DVector<f64>| {
-            counter += 1.0;
+            match mode {
+                // The value worsens with each call
+                Mode::Minimize => counter += 1.0,
+                Mode::Maximize => counter -= 1.0,
+            }
             counter
         };
         let mut history = History::new();
 
-        history.update(&[EvaluatedPoint::new(
-            DVector::zeros(4),
-            &DVector::zeros(4),
-            0.0,
-            &mut function,
-        )
-        .unwrap()]);
+        history.update(
+            mode,
+            &[
+                EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
+                    .unwrap(),
+            ],
+        );
 
         // For the first generation both values are equal
         let first = history.first_median_function_value().unwrap();
         let best = history.best_median_function_value().unwrap();
 
-        history.update(&[EvaluatedPoint::new(
-            DVector::zeros(4),
-            &DVector::zeros(4),
-            0.0,
-            &mut function,
-        )
-        .unwrap()]);
+        history.update(
+            mode,
+            &[
+                EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
+                    .unwrap(),
+            ],
+        );
 
         // For subsequent generations neither value changes because the median is increasing
         assert_eq!(first, history.first_median_function_value().unwrap());
         assert_eq!(best, history.best_median_function_value().unwrap());
+    }
+
+    #[test]
+    fn test_median_value_worsening_minimize() {
+        median_value_worsening(Mode::Minimize);
+    }
+
+    #[test]
+    fn test_median_value_worsening_maximize() {
+        median_value_worsening(Mode::Maximize);
     }
 }

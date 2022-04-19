@@ -2,9 +2,11 @@
 
 use nalgebra::DVector;
 
-use crate::{CMAESOptions, Individual, ObjectiveFunction, ParallelObjectiveFunction};
+use crate::{CMAESOptions, Individual, Mode, ObjectiveFunction, ParallelObjectiveFunction};
 
-/// Optimizes the value of `f` and returns the best solution found.
+const PRINT_GAP_EVALS: usize = 200;
+
+/// Minimizes the value of `f` and returns the best solution found.
 ///
 /// Equivalent to simply using the default [`CMAESOptions`][crate::CMAESOptions] with printing
 /// enabled. [`CMAESOptions`][crate::CMAESOptions] should be used instead if further configuration
@@ -25,7 +27,7 @@ where
     V: Into<DVector<f64>>,
 {
     CMAESOptions::new(initial_mean, initial_step_size)
-        .enable_printing(200)
+        .enable_printing(PRINT_GAP_EVALS)
         .build(f)
         .unwrap()
         .run()
@@ -52,7 +54,66 @@ where
     V: Into<DVector<f64>>,
 {
     CMAESOptions::new(initial_mean, initial_step_size)
-        .enable_printing(200)
+        .enable_printing(PRINT_GAP_EVALS)
+        .build(f)
+        .unwrap()
+        .run_parallel()
+        .overall_best
+        .unwrap()
+}
+
+/// Maximizes the value of `f` and returns the best solution found.
+///
+/// Equivalent to simply using the default [`CMAESOptions`][crate::CMAESOptions] with the mode set
+/// to [`Mode::Maximize`][crate::Mode::Maximize] and printing enabled.
+/// [`CMAESOptions`][crate::CMAESOptions] should be used instead if further configuration is
+/// desired.
+///
+/// # Examples
+///
+/// ```no_run
+/// use cmaes::DVector;
+///
+/// let function = |x: &DVector<f64>| 1.0 / x.magnitude();
+/// let dim = 10;
+/// let solution = cmaes::fmax(function, vec![5.0; dim], 1.0);
+/// ```
+pub fn fmax<F, V>(f: F, initial_mean: V, initial_step_size: f64) -> Individual
+where
+    F: ObjectiveFunction,
+    V: Into<DVector<f64>>,
+{
+    CMAESOptions::new(initial_mean, initial_step_size)
+        .mode(Mode::Maximize)
+        .enable_printing(PRINT_GAP_EVALS)
+        .build(f)
+        .unwrap()
+        .run()
+        .overall_best
+        .unwrap()
+}
+
+/// Like [`fmax`], but executes the objective function in parallel using multiple threads.
+///
+/// Requires that `F` implements [`ParallelObjectiveFunction`][crate::ParallelObjectiveFunction].
+///
+/// # Examples
+///
+/// ```no_run
+/// use cmaes::DVector;
+///
+/// let function = |x: &DVector<f64>| 1.0 / x.magnitude();
+/// let dim = 10;
+/// let solution = cmaes::fmax_parallel(function, vec![5.0; dim], 1.0);
+/// ```
+pub fn fmax_parallel<F, V>(f: F, initial_mean: V, initial_step_size: f64) -> Individual
+where
+    F: ParallelObjectiveFunction,
+    V: Into<DVector<f64>>,
+{
+    CMAESOptions::new(initial_mean, initial_step_size)
+        .mode(Mode::Maximize)
+        .enable_printing(PRINT_GAP_EVALS)
         .build(f)
         .unwrap()
         .run_parallel()

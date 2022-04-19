@@ -1,7 +1,7 @@
 //! General tests
 
 use assert_approx_eq::assert_approx_eq;
-use cmaes::{CMAESOptions, ObjectiveFunction, Weights, CMAES};
+use cmaes::{CMAESOptions, Mode, ObjectiveFunction, TerminationReason, Weights, CMAES};
 use nalgebra::DVector;
 
 use std::collections::HashMap;
@@ -13,8 +13,12 @@ const TEST_REPETITIONS: usize = 30;
 // Maximum generations per test
 const MAX_GENERATIONS: usize = 5000;
 
+// Checks that FunTarget is reached within the specified average function evals per run and number
+// of failures to reach fun_target
 fn run_test<F: ObjectiveFunction + Clone + 'static>(
     objective_function: F,
+    // Negates the objective function value and fun_target if this is Mode::Maximize
+    mode: Mode,
     options: CMAESOptions,
     max_avg_evals: usize,
     max_failures: usize,
@@ -25,11 +29,24 @@ fn run_test<F: ObjectiveFunction + Clone + 'static>(
     let mut reasons = HashMap::new();
 
     for _ in 0..TEST_REPETITIONS {
-        let mut cmaes_state = options
-            .clone()
-            .max_generations(MAX_GENERATIONS)
-            .build(objective_function.clone())
-            .unwrap();
+        let modified_function: Box<dyn ObjectiveFunction>;
+
+        let mut options = options.clone().max_generations(MAX_GENERATIONS).mode(mode);
+
+        match mode {
+            Mode::Maximize => {
+                let mut objective_function = objective_function.clone();
+                modified_function =
+                    Box::new(move |x: &DVector<f64>| -objective_function.evaluate(x));
+                options.fun_target = Some(-1e-12);
+            }
+            Mode::Minimize => {
+                modified_function = Box::new(objective_function.clone());
+                options.fun_target = Some(1e-12)
+            }
+        }
+
+        let mut cmaes_state = options.build(modified_function).unwrap();
 
         let result = cmaes_state.run();
         let overall_best = result.overall_best.unwrap();
@@ -39,7 +56,12 @@ fn run_test<F: ObjectiveFunction + Clone + 'static>(
             *reasons.entry(*reason).or_insert(0) += 1;
         }
 
-        if !(overall_best.value < options.tol_fun) {
+        // Check that the target function value was reached
+        if !result
+            .reasons
+            .iter()
+            .any(|r| *r == TerminationReason::FunTarget)
+        {
             failures.push((result.reasons, overall_best.value));
         }
 
@@ -69,7 +91,7 @@ fn test_sphere() {
         let mut options = CMAESOptions::new(vec![0.1; dim], 0.1).weights(weights);
         options.population_size *= pop_size_mult;
 
-        run_test(sphere, options, max_avg_evals, max_failures);
+        run_test(sphere, Mode::Minimize, options, max_avg_evals, max_failures);
     };
 
     run_test_sphere(3, 1, 700, 0, Weights::Negative);
@@ -85,7 +107,13 @@ fn test_ellipsoid() {
         let mut options = CMAESOptions::new(vec![0.1; dim], 0.1).weights(weights);
         options.population_size *= pop_size_mult;
 
-        run_test(ellipsoid, options, max_avg_evals, max_failures);
+        run_test(
+            ellipsoid,
+            Mode::Minimize,
+            options,
+            max_avg_evals,
+            max_failures,
+        );
     };
 
     run_test_ellipsoid(3, 1, 940, 0, Weights::Negative);
@@ -96,6 +124,7 @@ fn test_ellipsoid() {
 }
 
 fn run_test_rosenbrock(
+    mode: Mode,
     dim: usize,
     pop_size_mult: usize,
     max_avg_evals: usize,
@@ -105,17 +134,26 @@ fn run_test_rosenbrock(
     let mut options = CMAESOptions::new(vec![0.1; dim], 0.1).weights(weights);
     options.population_size *= pop_size_mult;
 
-    run_test(rosenbrock, options, max_avg_evals, max_failures);
+    run_test(rosenbrock, mode, options, max_avg_evals, max_failures);
+}
+
+fn rosenbrock_shared(mode: Mode) {
+    run_test_rosenbrock(mode, 3, 1, 1320, 0, Weights::Negative);
+    run_test_rosenbrock(mode, 10, 1, 6060, 1, Weights::Negative);
+    // Finds local optima sometimes with larger population size
+    run_test_rosenbrock(mode, 10, 10, 21600, TEST_REPETITIONS / 3, Weights::Negative);
+    run_test_rosenbrock(mode, 10, 10, 22500, TEST_REPETITIONS / 2, Weights::Positive);
+    run_test_rosenbrock(mode, 30, 10, 132000, 1, Weights::Negative);
 }
 
 #[test]
-fn test_rosenbrock() {
-    run_test_rosenbrock(3, 1, 1320, 0, Weights::Negative);
-    run_test_rosenbrock(10, 1, 6060, 1, Weights::Negative);
-    // Finds local minimum sometimes with larger population size
-    run_test_rosenbrock(10, 10, 21600, TEST_REPETITIONS / 3, Weights::Negative);
-    run_test_rosenbrock(10, 10, 22500, TEST_REPETITIONS / 2, Weights::Positive);
-    run_test_rosenbrock(30, 10, 132000, 1, Weights::Negative);
+fn test_rosenbrock_minimize() {
+    rosenbrock_shared(Mode::Minimize);
+}
+
+#[test]
+fn test_rosenbrock_maximize() {
+    rosenbrock_shared(Mode::Maximize);
 }
 
 #[test]
@@ -124,7 +162,13 @@ fn test_rastrigin() {
         let mut options = CMAESOptions::new(vec![5.0; dim], 5.0).weights(weights);
         options.population_size *= pop_size_mult;
 
-        run_test(rastrigin, options, max_avg_evals, max_failures);
+        run_test(
+            rastrigin,
+            Mode::Minimize,
+            options,
+            max_avg_evals,
+            max_failures,
+        );
     };
 
     run_test_rastrigin(3, 10, 4410, TEST_REPETITIONS / 2, Weights::Negative);
@@ -138,7 +182,13 @@ fn test_cigar() {
         let mut options = CMAESOptions::new(vec![0.1; dim], 0.1).weights(weights);
         options.population_size *= pop_size_mult;
 
-        run_test(cigar, options.clone(), max_avg_evals, max_failures);
+        run_test(
+            cigar,
+            Mode::Minimize,
+            options.clone(),
+            max_avg_evals,
+            max_failures,
+        );
     };
 
     run_test_cigar(3, 1, 1210, 0, Weights::Negative);
@@ -148,131 +198,145 @@ fn test_cigar() {
     run_test_cigar(30, 1, 14500, 1, Weights::Negative);
 }
 
-// Must be updated after every change to the algorithm (after thorough testing)
-fn fixed_seed(use_threads: bool) {
-    let function = rosenbrock;
-    let seed = 76561199230847669;
-    let dim = 4;
-    let mut cmaes_state = CMAESOptions::new(vec![0.0; dim], 5.0)
-        .seed(seed)
-        .build(function)
-        .unwrap();
-
-    let params = cmaes_state.parameters();
-    let lambda = params.lambda();
-
-    let eps = 1e-12;
-    assert_eq!(params.dim(), dim);
-    assert_eq!(lambda, 8);
-    assert_eq!(params.mu(), 4);
-    assert_approx_eq!(params.initial_sigma(), 5.0, eps);
-    assert_approx_eq!(params.mu_eff(), 2.6001788261131793, eps);
-    let weights_expected = [
-        0.5299301844787792,
-        0.2857142857142857,
-        0.14285714285714282,
-        0.041498386949792215,
-        -0.17013144983238102,
-        -0.4645361478293982,
-        -0.7134517732694924,
-        -0.9290722956587965,
-    ];
-    for (w, expected) in params.weights().iter().zip(weights_expected) {
-        assert_approx_eq!(w, expected, eps);
-    }
-
-    assert_approx_eq!(params.cc(), 0.5, eps);
-    assert_approx_eq!(params.c1(), 0.06516742738228268, eps);
-    assert_approx_eq!(params.cs(), 0.39656102677983807, eps);
-    assert_approx_eq!(params.cmu(), 0.05102399983259446, eps);
-    assert_approx_eq!(params.cm(), 1.0, eps);
-    assert_approx_eq!(params.damp_s(), 1.396561026779838, eps);
-    assert!(params.fun_target().is_none());
-    assert_approx_eq!(params.tol_fun(), 0.000000000001, eps);
-    assert_approx_eq!(params.tol_fun_rel(), 0.0, eps);
-    assert_approx_eq!(params.tol_fun_hist(), 0.000000000001, eps);
-    assert_approx_eq!(params.tol_x(), 0.000000000005, eps);
-    assert_eq!(params.tol_stagnation(), 200);
-    assert_approx_eq!(params.tol_x_up(), 1e8, eps);
-    assert_approx_eq!(params.tol_condition_cov(), 1e14, eps);
-    assert_eq!(params.seed(), seed);
-
-    let generations = 10;
-    for _ in 0..generations {
-        let _ = if use_threads {
-            cmaes_state.next_parallel()
-        } else {
-            cmaes_state.next()
-        };
-    }
-
-    assert_eq!(cmaes_state.generation(), generations);
-    assert_eq!(cmaes_state.function_evals(), lambda * generations);
-
-    let mean_expected = [
-        -0.04442673185635858,
-        0.02353654392996063,
-        0.4096764724597227,
-        0.2042616278234617,
-    ];
-    for (x, expected) in cmaes_state.mean().iter().zip(mean_expected) {
-        assert_approx_eq!(x, expected, eps);
-    }
-
-    let eigenvalues_expected = [
-        0.22289900256933676,
-        0.26348092262682127,
-        0.4463174403572355,
-        0.6706156210749331,
-    ];
-    for (x, expected) in cmaes_state.eigenvalues().iter().zip(eigenvalues_expected) {
-        assert_approx_eq!(x, expected, eps);
-    }
-
-    assert_approx_eq!(cmaes_state.axis_ratio(), 1.7345338122305334, eps);
-    assert_approx_eq!(cmaes_state.sigma(), 1.0419239528728568, eps);
-
-    let current_best = cmaes_state.current_best_individual().unwrap();
-    let current_best_expected = [
-        0.21674424807265003,
-        0.45885012656947854,
-        0.3323521341777004,
-        0.3997481950851467,
-    ];
-    for (x, expected) in current_best.point.iter().zip(current_best_expected) {
-        assert_approx_eq!(x, expected, eps);
-    }
-
-    assert_approx_eq!(current_best.value, 28.168566541912956, eps);
-
-    let overall_best = cmaes_state.overall_best_individual().unwrap();
-    let overall_best_expected = [
-        0.21674424807265003,
-        0.45885012656947854,
-        0.3323521341777004,
-        0.3997481950851467,
-    ];
-    for (x, expected) in overall_best.point.iter().zip(overall_best_expected) {
-        assert_approx_eq!(x, expected, eps);
-    }
-
-    assert_approx_eq!(overall_best.value, 28.168566541912956, eps);
-}
-
-#[test]
-fn test_fixed_seed() {
-    fixed_seed(false);
-}
-
-// Check that using threads doesn't affect the results
-#[test]
-fn test_fixed_seed_parallel() {
-    fixed_seed(true);
-}
-
 /// For tests with consistent results
 mod consistent {
     use super::*;
+
+    // Must be updated after every change to the algorithm (after thorough testing)
+    fn fixed_seed(mode: Mode, use_threads: bool) {
+        let function = match mode {
+            Mode::Minimize => rosenbrock,
+            // Flip the function so maximizing it makes sense
+            Mode::Maximize => (|x| -rosenbrock(x)) as fn(&DVector<f64>) -> f64,
+        };
+        let seed = 76561199230847669;
+        let dim = 4;
+        let mut cmaes_state = CMAESOptions::new(vec![0.0; dim], 5.0)
+            .mode(mode)
+            .seed(seed)
+            .build(function)
+            .unwrap();
+
+        let params = cmaes_state.parameters();
+        let lambda = params.lambda();
+
+        let eps = 1e-12;
+        assert_eq!(params.dim(), dim);
+        assert_eq!(lambda, 8);
+        assert_eq!(params.mu(), 4);
+        assert_approx_eq!(params.initial_sigma(), 5.0, eps);
+        assert_approx_eq!(params.mu_eff(), 2.6001788261131793, eps);
+        let weights_expected = [
+            0.5299301844787792,
+            0.2857142857142857,
+            0.14285714285714282,
+            0.041498386949792215,
+            -0.17013144983238102,
+            -0.4645361478293982,
+            -0.7134517732694924,
+            -0.9290722956587965,
+        ];
+        for (w, expected) in params.weights().iter().zip(weights_expected) {
+            assert_approx_eq!(w, expected, eps);
+        }
+
+        assert_approx_eq!(params.cc(), 0.5, eps);
+        assert_approx_eq!(params.c1(), 0.06516742738228268, eps);
+        assert_approx_eq!(params.cs(), 0.39656102677983807, eps);
+        assert_approx_eq!(params.cmu(), 0.05102399983259446, eps);
+        assert_approx_eq!(params.cm(), 1.0, eps);
+        assert_approx_eq!(params.damp_s(), 1.396561026779838, eps);
+        assert!(params.fun_target().is_none());
+        assert_approx_eq!(params.tol_fun(), 0.000000000001, eps);
+        assert_approx_eq!(params.tol_fun_rel(), 0.0, eps);
+        assert_approx_eq!(params.tol_fun_hist(), 0.000000000001, eps);
+        assert_approx_eq!(params.tol_x(), 0.000000000005, eps);
+        assert_eq!(params.tol_stagnation(), 200);
+        assert_approx_eq!(params.tol_x_up(), 1e8, eps);
+        assert_approx_eq!(params.tol_condition_cov(), 1e14, eps);
+        assert_eq!(params.seed(), seed);
+
+        let generations = 10;
+        for _ in 0..generations {
+            let _ = if use_threads {
+                cmaes_state.next_parallel()
+            } else {
+                cmaes_state.next()
+            };
+        }
+
+        assert_eq!(cmaes_state.generation(), generations);
+        assert_eq!(cmaes_state.function_evals(), lambda * generations);
+
+        let mean_expected = [
+            -0.04442673185635858,
+            0.02353654392996063,
+            0.4096764724597227,
+            0.2042616278234617,
+        ];
+        for (x, expected) in cmaes_state.mean().iter().zip(mean_expected) {
+            assert_approx_eq!(x, expected, eps);
+        }
+
+        let eigenvalues_expected = [
+            0.22289900256933676,
+            0.26348092262682127,
+            0.4463174403572355,
+            0.6706156210749331,
+        ];
+        for (x, expected) in cmaes_state.eigenvalues().iter().zip(eigenvalues_expected) {
+            assert_approx_eq!(x, expected, eps);
+        }
+
+        assert_approx_eq!(cmaes_state.axis_ratio(), 1.7345338122305334, eps);
+        assert_approx_eq!(cmaes_state.sigma(), 1.0419239528728568, eps);
+
+        let current_best = cmaes_state.current_best_individual().unwrap();
+        let current_best_expected = [
+            0.21674424807265003,
+            0.45885012656947854,
+            0.3323521341777004,
+            0.3997481950851467,
+        ];
+        for (x, expected) in current_best.point.iter().zip(current_best_expected) {
+            assert_approx_eq!(x, expected, eps);
+        }
+
+        let expected_sign = match mode {
+            Mode::Minimize => 1.0,
+            Mode::Maximize => -1.0,
+        };
+        assert_approx_eq!(current_best.value, 28.168566541912956 * expected_sign, eps);
+
+        let overall_best = cmaes_state.overall_best_individual().unwrap();
+        let overall_best_expected = [
+            0.21674424807265003,
+            0.45885012656947854,
+            0.3323521341777004,
+            0.3997481950851467,
+        ];
+        for (x, expected) in overall_best.point.iter().zip(overall_best_expected) {
+            assert_approx_eq!(x, expected, eps);
+        }
+
+        assert_approx_eq!(overall_best.value, 28.168566541912956 * expected_sign, eps);
+    }
+
+    #[test]
+    fn test_fixed_seed_minimize() {
+        fixed_seed(Mode::Minimize, false);
+    }
+
+    #[test]
+    fn test_fixed_seed_maximize() {
+        fixed_seed(Mode::Maximize, false);
+    }
+
+    // Check that using threads doesn't affect the results
+    #[test]
+    fn test_fixed_seed_minimize_parallel() {
+        fixed_seed(Mode::Minimize, true);
+    }
 
     // Checks that certain usage patterns work
     #[test]
@@ -317,8 +381,11 @@ mod consistent {
 
     #[test]
     fn test_rosenbrock_small_dim() {
-        run_test_rosenbrock(3, 1, 1320, 0, Weights::Negative);
-        run_test_rosenbrock(3, 1, 1600, 0, Weights::Positive);
+        run_test_rosenbrock(Mode::Minimize, 3, 1, 1320, 0, Weights::Negative);
+        run_test_rosenbrock(Mode::Minimize, 3, 1, 1600, 0, Weights::Positive);
+
+        run_test_rosenbrock(Mode::Maximize, 3, 1, 1320, 0, Weights::Negative);
+        run_test_rosenbrock(Mode::Maximize, 3, 1, 1600, 0, Weights::Positive);
     }
 }
 

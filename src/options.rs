@@ -4,6 +4,7 @@ use nalgebra::DVector;
 
 use std::time::Duration;
 
+use crate::mode::Mode;
 use crate::parameters::Weights;
 use crate::{PlotOptions, CMAES};
 
@@ -27,6 +28,8 @@ use crate::{PlotOptions, CMAES};
 /// ```
 #[derive(Clone)]
 pub struct CMAESOptions {
+    /// The mode to use when optimizing the objective function. Default value is [`Mode::Minimize`].
+    pub mode: Mode,
     /// Initial mean of the search distribution, also used to determine the problem dimension (`N`).
     /// This should be set to a first guess at the solution.
     pub initial_mean: DVector<f64>,
@@ -118,6 +121,7 @@ impl CMAESOptions {
         let initial_mean = initial_mean.into();
         let dimensions = initial_mean.len();
         Self {
+            mode: Mode::Minimize,
             initial_mean,
             initial_step_size,
             population_size: 4 + (3.0 * (dimensions as f64).ln()).floor() as usize,
@@ -138,6 +142,12 @@ impl CMAESOptions {
             plot_options: None,
             print_gap_evals: None,
         }
+    }
+
+    /// Changes the optimization mode.
+    pub fn mode(mut self, mode: Mode) -> Self {
+        self.mode = mode;
+        self
     }
 
     /// Changes the initial mean.

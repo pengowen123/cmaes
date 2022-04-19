@@ -20,6 +20,7 @@ use std::path::Path;
 
 use crate::history::History;
 use crate::state::State;
+use crate::Mode;
 use data::PlotData;
 
 /// The drawing backend to use for rendering the plot.
@@ -39,12 +40,12 @@ pub const PLOT_WIDTH: u32 = 1200;
 /// the plot, use [`CMAESOptions::enable_plot`][crate::CMAESOptions::enable_plot].
 ///
 /// Plots for each iteration the:
-/// - Distance of best value from the minimum objective function value
+/// - Distance of best value from the overall best objective function value
 /// - Absolute best objective function value
 /// - Absolute median objective function value
 /// - Distribution axis ratio
 /// - Distribution mean
-/// - Scaling of each distribution axis.
+/// - Scaling of each distribution axis
 /// - Standard deviation in each coordinate axis (without sigma)
 ///
 /// # Examples
@@ -73,6 +74,7 @@ pub const PLOT_WIDTH: u32 = 1200;
 pub struct Plot {
     data: PlotData,
     options: PlotOptions,
+    mode: Mode,
     /// The last time a data point was recorded, in function evals
     /// Is None if no data points have been recorded yet
     last_data_point_evals: Option<usize>,
@@ -83,10 +85,11 @@ pub struct Plot {
 
 impl Plot {
     /// Initializes an empty `Plot` with the provided options.
-    pub(crate) fn new(dimensions: usize, options: PlotOptions) -> Self {
+    pub(crate) fn new(dimensions: usize, options: PlotOptions, mode: Mode) -> Self {
         Self {
             data: PlotData::new(dimensions),
             options,
+            mode,
             last_data_point_evals: None,
             last_data_point_generation: None,
         }
@@ -152,7 +155,7 @@ impl Plot {
         let bottom_left = child_drawing_areas.next().unwrap();
         let bottom_right = child_drawing_areas.next().unwrap();
 
-        draw::draw_single_dimensioned(&self.data, &top_left)?;
+        draw::draw_single_dimensioned(self.mode, &self.data, &top_left)?;
         draw::draw_mean(&self.data, &self.options, &top_right)?;
         draw::draw_sqrt_eigenvalues(&self.data, &bottom_left)?;
         draw::draw_coord_axis_scales(&self.data, &bottom_right)?;
