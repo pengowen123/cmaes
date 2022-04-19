@@ -6,7 +6,9 @@ use std::time::Duration;
 
 use crate::mode::Mode;
 use crate::parameters::Weights;
-use crate::{PlotOptions, CMAES};
+#[cfg(feature = "plotters")]
+use crate::PlotOptions;
+use crate::CMAES;
 
 /// A builder for [`CMAES`]. Used to adjust parameters of the algorithm to each particular
 /// problem and to change other options. See the fields and methods for a full list of options.
@@ -101,6 +103,7 @@ pub struct CMAESOptions {
     pub seed: Option<u64>,
     /// Options for the data plot. Default value is `None`, meaning no plot will be generated. See
     /// [`Plot`][crate::plotting::Plot].
+    #[cfg(feature = "plotters")]
     pub plot_options: Option<PlotOptions>,
     /// How many function evaluations to wait for in between each automatic
     /// [`CMAES::print_info`] call. Default value is `None`, meaning no info will be
@@ -139,6 +142,7 @@ impl CMAESOptions {
             tol_x_up: 1e8,
             tol_condition_cov: 1e14,
             seed: None,
+            #[cfg(feature = "plotters")]
             plot_options: None,
             print_gap_evals: None,
         }
@@ -267,6 +271,7 @@ impl CMAESOptions {
 
     /// Enables recording of a data plot for various state variables of the algorithm. See
     /// [`Plot`][crate::plotting::Plot].
+    #[cfg(feature = "plotters")]
     pub fn enable_plot(mut self, plot_options: PlotOptions) -> Self {
         self.plot_options = Some(plot_options);
         self

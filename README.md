@@ -38,7 +38,7 @@ let dim = 10;
 let solution = cmaes::fmin(sphere, vec![5.0; dim], 1.0);
 ```
 
-More options can be accessed through the `CMAESOptions` type, including data plots:
+More options can be accessed through the `CMAESOptions` type, including data plots (requires the `plotters` feature):
 ```rust
 use cmaes::{CMAESOptions, DVector, PlotOptions};
 

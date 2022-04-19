@@ -1,4 +1,6 @@
 //! An example of using `cmaes` to minimize various simple functions.
+//!
+//! Requires the `plotters` feature.
 
 #![allow(dead_code)]
 

@@ -19,7 +19,8 @@
 //!
 //! Further configuration of a run can be performed by creating and building a [`CMAESOptions`] and
 //! calling [`CMAES::run`] or [`CMAES::run_parallel`]. This option provides the most flexibility and
-//! customization and allows for visualizing runs through data plots (see [`Plot`]).
+//! customization and allows for visualizing runs through data plots (see [`Plot`]; requires the
+//! `plotters` feature).
 //!
 //! ```no_run
 //! use cmaes::{CMAESOptions, DVector};
@@ -109,6 +110,7 @@ mod mode;
 pub mod objective_function;
 pub mod options;
 pub mod parameters;
+#[cfg(feature = "plotters")]
 pub mod plotting;
 pub mod restart;
 mod sampling;
@@ -124,6 +126,7 @@ pub use crate::mode::Mode;
 pub use crate::objective_function::{ObjectiveFunction, ParallelObjectiveFunction};
 pub use crate::options::CMAESOptions;
 pub use crate::parameters::Weights;
+#[cfg(feature = "plotters")]
 pub use crate::plotting::PlotOptions;
 pub use crate::termination::TerminationReason;
 
@@ -134,6 +137,7 @@ use crate::history::History;
 use crate::matrix::SquareMatrix;
 use crate::options::InvalidOptionsError;
 use crate::parameters::Parameters;
+#[cfg(feature = "plotters")]
 use crate::plotting::Plot;
 use crate::sampling::{EvaluatedPoint, InvalidFunctionValueError, Sampler};
 use crate::state::State;
@@ -206,6 +210,7 @@ pub struct CMAES<F> {
     /// Objective function value history
     history: History,
     /// Data plot if enabled
+    #[cfg(feature = "plotters")]
     plot: Option<Plot>,
     /// The minimum number of function evaluations to wait for in between each automatic
     /// [`CMAES::print_info`] call
@@ -257,15 +262,17 @@ impl<F> CMAES<F> {
         let history = History::new();
 
         // Initialize plot if enabled
+        #[cfg(feature = "plotters")]
         let plot = options
             .plot_options
             .map(|o| Plot::new(dimensions, o, options.mode));
 
-        let mut cmaes = Self {
+        let cmaes = Self {
             sampler,
             parameters,
             state,
             history,
+            #[cfg(feature = "plotters")]
             plot,
             print_gap_evals: options.print_gap_evals,
             last_print_evals: 0,
@@ -273,6 +280,9 @@ impl<F> CMAES<F> {
         };
 
         // Plot initial state
+        #[cfg(feature = "plotters")]
+        let mut cmaes = cmaes;
+        #[cfg(feature = "plotters")]
         cmaes.add_plot_point();
 
         // Print initial info
@@ -286,6 +296,7 @@ impl<F> CMAES<F> {
     /// Shared logic between `run` and `run_parallel`
     fn run_internal(&mut self, result: &TerminationData) {
         // Plot/print the final state
+        #[cfg(feature = "plotters")]
         self.add_plot_point();
 
         if self.print_gap_evals.is_some() {
@@ -311,6 +322,7 @@ impl<F> CMAES<F> {
         }
 
         // Plot latest state
+        #[cfg(feature = "plotters")]
         if let Some(ref plot) = self.plot {
             // Always plot the first generation
             if self.state.generation() <= 1
@@ -427,11 +439,13 @@ impl<F> CMAES<F> {
     }
 
     /// Returns a reference to the data plot if enabled.
+    #[cfg(feature = "plotters")]
     pub fn get_plot(&self) -> Option<&Plot> {
         self.plot.as_ref()
     }
 
     /// Returns a mutable reference to the data plot if enabled.
+    #[cfg(feature = "plotters")]
     pub fn get_mut_plot(&mut self) -> Option<&mut Plot> {
         self.plot.as_mut()
     }
@@ -461,6 +475,7 @@ impl<F> CMAES<F> {
 
     /// Adds a data point to the data plot if enabled and not already called this generation. Can be
     /// called manually after termination to plot the final state if [`run`][Self::run] isn't used.
+    #[cfg(feature = "plotters")]
     pub fn add_plot_point(&mut self) {
         if let Some(ref mut plot) = self.plot {
             plot.add_data_point(self.sampler.function_evals(), &self.state, &self.history);

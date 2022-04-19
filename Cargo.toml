@@ -8,10 +8,9 @@ license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/cmaes"
 repository = "https://github.com/pengowen123/cmaes"
 
-
 [features]
 # For BLAS/LAPACK
-default    = ["netlib"]
+default    = ["plotters", "netlib"]
 openblas   = ["nalgebra-lapack/openblas"]
 netlib     = ["nalgebra-lapack/netlib"]
 accelerate = ["nalgebra-lapack/accelerate"]
@@ -30,6 +29,7 @@ default-features = false
 
 [dependencies.plotters]
 version = "0.3.1"
+optional = true
 default-features = false
 features = [ "bitmap_backend", "bitmap_encoder", "line_series" ]
 
