@@ -90,25 +90,26 @@ impl PlotData {
         state: &State,
         history: &History,
     ) {
-        self.function_evals.push(current_function_evals);
         let best_function_value = history
             .current_best_individual()
             .map(|x| x.value)
             // At 0 function evals there isn't a best individual yet, so assign it NAN and filter it
             // later
             .unwrap_or(f64::NAN);
-        self.best_function_value
-            .push(apply_offset(best_function_value));
+
         let median_function_value = history
             .current_median_function_value()
             // At 0 function evals there isn't a median function value yet, so use NAN and filter it
             // later
             .unwrap_or(f64::NAN);
+
+        self.function_evals.push(current_function_evals);
+        self.best_function_value
+            .push(apply_offset(best_function_value));
         self.median_function_value
             .push(apply_offset(median_function_value));
         self.sigma.push(apply_offset(state.sigma()));
 
-        let mut sqrt_eigenvalues = state.cov_sqrt_eigenvalues().diagonal();
         self.axis_ratio.push(apply_offset(state.axis_ratio()));
 
         let mean = state.mean();
@@ -116,9 +117,10 @@ impl PlotData {
             self.mean_dimensions[i].push(*x);
         }
 
-        let sqrt_eigenvalues = sqrt_eigenvalues.as_mut_slice();
-        sqrt_eigenvalues.sort_by(|a, b| partial_cmp(*a, *b));
-        for (i, x) in sqrt_eigenvalues.iter().enumerate() {
+        let mut sqrt_eigenvalues = state.cov_sqrt_eigenvalues().diagonal();
+        let sorted_sqrt_eigenvalues = sqrt_eigenvalues.as_mut_slice();
+        sorted_sqrt_eigenvalues.sort_by(|a, b| partial_cmp(*a, *b));
+        for (i, x) in sorted_sqrt_eigenvalues.iter().enumerate() {
             self.sqrt_eigenvalues[i].push(apply_offset(*x));
         }
 
