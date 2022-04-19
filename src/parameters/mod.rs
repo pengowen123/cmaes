@@ -41,7 +41,7 @@ pub(crate) struct TerminationParameters {
 
 impl TerminationParameters {
     /// Initializes the `TerminationParameters` with the parameters set in `options`
-    pub fn from_options(options: &CMAESOptions) -> Self {
+    pub(crate) fn from_options(options: &CMAESOptions) -> Self {
         let dimensions = options.initial_mean.len();
         let tol_x = options.tol_x.unwrap_or(1e-12 * options.initial_step_size);
         let default_tol_stagnation =
@@ -103,17 +103,12 @@ pub struct Parameters {
 impl Parameters {
     /// Calculates and returns a new set of `Parameters`
     pub(crate) fn new(
-        // TODO: probably just take &CMAESOptions here
-        mode: Mode,
-        dim: usize,
-        lambda: usize,
-        weights: Weights,
+        options: &CMAESOptions,
         seed: u64,
-        initial_sigma: f64,
-        cm: f64,
         termination: TerminationParameters,
     ) -> Self {
-        let initial_weights = InitialWeights::new(lambda, weights);
+        let dim = options.initial_mean.len();
+        let initial_weights = InitialWeights::new(options.population_size, options.weights);
         let mu = initial_weights.mu();
         let mu_eff = initial_weights.mu_eff();
 
@@ -133,22 +128,27 @@ impl Parameters {
         let damp_s = 1.0 + cs + 2.0 * (((mu_eff - 1.0) / (dim as f64 + 1.0)).sqrt() - 1.0).max(0.0);
 
         Parameters {
-            mode,
+            mode: options.mode,
             dim,
-            lambda,
+            lambda: options.population_size,
             mu,
-            initial_sigma,
+            initial_sigma: options.initial_step_size,
             mu_eff,
             weights: final_weights,
             cc,
             c1,
             cs,
             cmu,
-            cm,
+            cm: options.cm,
             damp_s,
             termination,
             seed,
         }
+    }
+
+    /// Calculates and returns a new set of `Parameters` from the provided options
+    pub(crate) fn from_options(options: &CMAESOptions, seed: u64) -> Self {
+        Self::new(options, seed, TerminationParameters::from_options(options))
     }
 
     /// Returns the optimization mode.

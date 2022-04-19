@@ -308,7 +308,7 @@ mod tests {
     use super::*;
     use crate::matrix::SquareMatrix;
     use crate::mode::Mode;
-    use crate::parameters::{TerminationParameters, Weights};
+    use crate::parameters::TerminationParameters;
     use crate::state::State;
     use crate::CMAESOptions;
 
@@ -375,22 +375,14 @@ mod tests {
         map_history(&mut history);
 
         // Take most default parameters from default CMAESOptions
-        let options = CMAESOptions::new(initial_mean, initial_sigma).tol_stagnation(TOL_STAGNATION);
+        let options = CMAESOptions::new(initial_mean, initial_sigma)
+            .mode(mode)
+            .initial_step_size(initial_sigma)
+            .tol_stagnation(TOL_STAGNATION);
         let mut termination_parameters = TerminationParameters::from_options(&options);
         map_parameters(&mut termination_parameters);
 
-        let lambda = 6;
-        let cm = 1.0;
-        let parameters = Parameters::new(
-            mode,
-            DIM,
-            lambda,
-            Weights::Negative,
-            0,
-            initial_sigma,
-            cm,
-            termination_parameters,
-        );
+        let parameters = Parameters::new(&options, 0, termination_parameters);
 
         let results = TerminationCheck {
             current_function_evals,

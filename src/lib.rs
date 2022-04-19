@@ -133,7 +133,7 @@ use std::time::{Duration, Instant};
 use crate::history::History;
 use crate::matrix::SquareMatrix;
 use crate::options::InvalidOptionsError;
-use crate::parameters::{Parameters, TerminationParameters};
+use crate::parameters::Parameters;
 use crate::plotting::Plot;
 use crate::sampling::{EvaluatedPoint, InvalidFunctionValueError, Sampler};
 use crate::state::State;
@@ -248,17 +248,7 @@ impl<F> CMAES<F> {
         );
 
         // Initialize constant parameters according to the options
-        let termination_parameters = TerminationParameters::from_options(&options);
-        let parameters = Parameters::new(
-            options.mode,
-            dimensions,
-            options.population_size,
-            options.weights,
-            seed,
-            options.initial_step_size,
-            options.cm,
-            termination_parameters,
-        );
+        let parameters = Parameters::from_options(&options, seed);
 
         // Initialize variable parameters
         let state = State::new(options.initial_mean, options.initial_step_size);
