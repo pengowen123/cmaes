@@ -98,7 +98,7 @@ impl<'a> TerminationCheck<'a> {
         let tol_fun_rel_option = self.parameters.tol_fun_rel();
         let tol_fun_hist = self.parameters.tol_fun_hist();
         let tol_x = self.parameters.tol_x();
-        let tol_stagnation = self.parameters.tol_stagnation();
+        let tol_stagnation_option = self.parameters.tol_stagnation();
         let tol_x_up = self.parameters.tol_x_up();
         let tol_condition_cov = self.parameters.tol_condition_cov();
 
@@ -211,7 +211,7 @@ impl<'a> TerminationCheck<'a> {
 
         // Check TerminationReason::TolStagnation
         let tol_stagnation_generations =
-            get_tol_stagnation_generations(tol_stagnation, self.state.generation());
+            get_tol_stagnation_generations(tol_stagnation_option, self.state.generation());
 
         if let Some(tol_stagnation_generations) = tol_stagnation_generations {
             if self.history.best_function_values().len() >= tol_stagnation_generations
@@ -221,9 +221,9 @@ impl<'a> TerminationCheck<'a> {
                 // `tol_stagnation_generations` generations
                 // Returns true if the values became worse
                 let did_values_regress = |values: &VecDeque<f64>| {
-                    // Note that TolStagnation is effectively disabled if tol_stagnation is < 4, but
-                    // it's not reasonable for anyone to set it that low anyways
-                    let subrange_length = (tol_stagnation as f64 * 0.3) as usize;
+                    // Note that TolStagnation is effectively disabled if tol_stagnation_generations
+                    // is < 4, enforcing an effective minimum bound on tol_stagnation
+                    let subrange_length = (tol_stagnation_generations as f64 * 0.3) as usize;
 
                     // Most recent `subrange_length `values within the past
                     // `tol_stagnation_generations` generations
@@ -661,8 +661,9 @@ mod tests {
         };
 
         run(TOL_STAGNATION, &[TerminationReason::TolStagnation]);
-        // Check that no panic occurs if tol_stagnation is 0
-        run(0, &[]);
+        // Check that no panic occurs if tol_stagnation is 0 (this is only the lower bound, so it
+        // is still checked over TOL_STAGNATION generations in this case)
+        run(0, &[TerminationReason::TolStagnation]);
     }
 
     #[test]

@@ -82,13 +82,7 @@ impl History {
             self.best_function_values.pop_back();
         }
 
-        let median_value = if current_generation.len() % 2 == 0 {
-            (current_generation[current_generation.len() / 2 - 1].value()
-                + current_generation[current_generation.len() / 2].value())
-                / 2.0
-        } else {
-            current_generation[current_generation.len() / 2].value()
-        };
+        let median_value = get_median_value(current_generation);
         self.median_function_values.push_front(median_value);
         if self.median_function_values.len() > MAX_HISTORY_LENGTH {
             self.median_function_values.pop_back();
@@ -139,11 +133,44 @@ impl History {
     }
 }
 
+/// Returns the median function value of the generation
+/// Assumes that `individuals` is already sorted by function value
+fn get_median_value(individuals: &[EvaluatedPoint]) -> f64 {
+    if individuals.len() % 2 == 0 {
+        (individuals[individuals.len() / 2 - 1].value()
+            + individuals[individuals.len() / 2].value())
+            / 2.0
+    } else {
+        individuals[individuals.len() / 2].value()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use nalgebra::DVector;
 
     use super::*;
+
+    #[test]
+    fn test_get_median_value() {
+        let get_point = |value| {
+            EvaluatedPoint::new(DVector::zeros(2), &DVector::zeros(2), 1.0, &mut |_: &_| {
+                value
+            })
+            .unwrap()
+        };
+        let get_generation =
+            |values: &[f64]| values.iter().map(|v| get_point(*v)).collect::<Vec<_>>();
+
+        assert_eq!(
+            2.0,
+            get_median_value(&get_generation(&[0.0, 1.0, 2.0, 3.0, 4.0]))
+        );
+        assert_eq!(
+            1.5,
+            get_median_value(&get_generation(&[0.0, 1.0, 2.0, 3.0]))
+        );
+    }
 
     fn update_shared(mode: Mode, expected_best: f64, expected_median: f64) {
         let mut history = History::new();
