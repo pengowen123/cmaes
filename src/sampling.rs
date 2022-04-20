@@ -123,31 +123,35 @@ impl<F: ParallelObjectiveFunction> Sampler<F> {
 pub struct EvaluatedPoint {
     /// The evaluated point
     point: DVector<f64>,
-    /// The point before scaling/translation
+    /// The step from the mean of the point before scaling by sigma
     /// In the distribution N(0, cov)
-    step: DVector<f64>,
+    unscaled_step: DVector<f64>,
     /// The objective value at the point
     value: f64,
 }
 
 impl EvaluatedPoint {
-    /// Returns a new `EvaluatedPoint` from the untransformed step from the mean, the mean, and
-    /// the step size
+    /// Returns a new `EvaluatedPoint` from the unscaled step from the mean, the mean, and the step
+    /// size
     ///
     /// Returns `Err` if the objective function returned an invalid value
     pub fn new<F: FnMut(&DVector<f64>) -> f64>(
-        step: DVector<f64>,
+        unscaled_step: DVector<f64>,
         mean: &DVector<f64>,
         sigma: f64,
         mut objective_function: F,
     ) -> Result<Self, InvalidFunctionValueError> {
-        let point = mean + sigma * &step;
+        let point = mean + sigma * &unscaled_step;
         let value = objective_function(&point);
 
         if value.is_nan() {
             Err(InvalidFunctionValueError)
         } else {
-            Ok(Self { point, step, value })
+            Ok(Self {
+                point,
+                unscaled_step,
+                value,
+            })
         }
     }
 
@@ -155,8 +159,8 @@ impl EvaluatedPoint {
         &self.point
     }
 
-    pub fn step(&self) -> &DVector<f64> {
-        &self.step
+    pub fn unscaled_step(&self) -> &DVector<f64> {
+        &self.unscaled_step
     }
 
     pub fn value(&self) -> f64 {
@@ -182,7 +186,7 @@ mod tests {
 
         let point = EvaluatedPoint::new(step.clone(), &mean, sigma, &mut function).unwrap();
 
-        assert_eq!(point.step, DVector::from(vec![1.0; dim]));
+        assert_eq!(point.unscaled_step, DVector::from(vec![1.0; dim]));
         assert_eq!(point.point, DVector::from(vec![5.0; dim]));
         assert_eq!(point.value, 5.0 * dim as f64);
 

@@ -68,7 +68,7 @@ impl State {
             .iter()
             .take(mu)
             .enumerate()
-            .map(|(i, p)| p.step() * params.weights()[i])
+            .map(|(i, p)| p.unscaled_step() * params.weights()[i])
             .sum::<DVector<f64>>();
         self.mean = &self.mean + &(cm * self.sigma * &yw);
 
@@ -101,7 +101,10 @@ impl State {
             *w * if *w >= 0.0 {
                 1.0
             } else {
-                dim as f64 / (sqrt_inv_c * individuals[i].step()).magnitude().powi(2)
+                dim as f64
+                    / (sqrt_inv_c * individuals[i].unscaled_step())
+                        .magnitude()
+                        .powi(2)
             }
         });
 
@@ -112,7 +115,10 @@ impl State {
             + cmu
                 * weights_cov
                     .enumerate()
-                    .map(|(i, wc)| wc * individuals[i].step() * individuals[i].step().transpose())
+                    .map(|(i, wc)| {
+                        wc * individuals[i].unscaled_step()
+                            * individuals[i].unscaled_step().transpose()
+                    })
                     .sum::<SquareMatrix<f64>>();
 
         // Update eigendecomposition occasionally (updating every generation is unnecessary and
