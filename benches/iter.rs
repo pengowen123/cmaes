@@ -18,6 +18,7 @@ fn rosenbrock(x: &DVector<f64>) -> f64 {
 // to avoid benchmarking based on the trivial initial state
 fn get_cmaes_state(
     dim: usize,
+    lambda_mult: usize,
     weights: Weights,
     plot: bool,
     extra_setup_iters: usize,
@@ -26,6 +27,7 @@ fn get_cmaes_state(
         .map(|_| 3.0 * rand::random::<f64>())
         .collect::<Vec<_>>();
     let mut options = CMAESOptions::new(initial_mean, 1.0).weights(weights);
+    options.population_size *= lambda_mult;
 
     if plot {
         options = options.enable_plot(PlotOptions::new(0, false))
@@ -46,11 +48,11 @@ fn single_iter(state: &mut CMAES<Box<dyn ObjectiveFunction>>) -> Option<Terminat
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut extra_setup_iters = 0;
-    let mut run_bench = |name, dim, weights, plot| {
+    let mut run_bench = |name, dim, lambda_mult, weights, plot| {
         c.bench_function(name, |b| {
             b.iter_batched_ref(
                 || {
-                    let state = get_cmaes_state(dim, weights, plot, extra_setup_iters);
+                    let state = get_cmaes_state(dim, lambda_mult, weights, plot, extra_setup_iters);
 
                     // Vary the number of initial setup iters to include the proper distribution of
                     // iters with eigen updates
@@ -66,32 +68,51 @@ fn criterion_benchmark(c: &mut Criterion) {
     };
 
     run_bench(
-        "single iter aCMA-ES n=3 plot=false",
+        "single iter aCMA-ES n=3 lambda=default plot=false",
         3,
+        1,
         Weights::Negative,
         false,
     );
     run_bench(
-        "single iter aCMA-ES n=10 plot=false",
+        "single iter aCMA-ES n=10 lambda=default plot=false",
+        10,
+        1,
+        Weights::Negative,
+        false,
+    );
+    run_bench(
+        "single iter aCMA-ES n=10 lambda=default plot=false",
+        10,
+        1,
+        Weights::Negative,
+        false,
+    );
+    run_bench(
+        "single iter aCMA-ES n=10 lambda=10*default plot=false",
+        10,
         10,
         Weights::Negative,
         false,
     );
     run_bench(
-        "single iter CMA-ES n=10 plot=false",
+        "single iter CMA-ES n=10 lambda=default plot=false",
         10,
+        1,
         Weights::Positive,
         false,
     );
     run_bench(
-        "single iter aCMA-ES n=10 plot=true",
+        "single iter aCMA-ES n=10 lambda=default plot=true",
         10,
+        1,
         Weights::Negative,
         true,
     );
     run_bench(
-        "single iter aCMA-ES n=30 plot=false",
+        "single iter aCMA-ES n=30 lambda=default plot=false",
         30,
+        1,
         Weights::Negative,
         false,
     );
