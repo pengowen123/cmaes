@@ -64,19 +64,22 @@ impl State {
 
         // Calculate new mean through weighted recombination
         // Only the mu best individuals are used even if there are lambda weights
-        let yw = individuals
-            .iter()
-            .take(mu)
-            .enumerate()
-            .map(|(i, p)| p.step() * params.weights()[i])
+        let selected_individuals = individuals.iter().take(mu).enumerate();
+        let yw = selected_individuals
+            .clone()
+            .map(|(i, p)| p.unscaled_step() * params.weights()[i])
             .sum::<DVector<f64>>();
+        // Weights average of untransformed steps, to be used later
+        let zw = selected_individuals
+            .map(|(i, p)| p.untransformed_step() * params.weights()[i])
+            .sum::<DVector<f64>>();
+
         self.mean = &self.mean + &(cm * self.sigma * &yw);
 
         // Update evolution paths
-        let sqrt_inv_c = self.cov.sqrt_inv();
-
+        let eigenvectors = self.cov.eigenvectors();
         self.path_sigma =
-            (1.0 - cs) * &self.path_sigma + (cs * (2.0 - cs) * mu_eff).sqrt() * sqrt_inv_c * &yw;
+            (1.0 - cs) * &self.path_sigma + (cs * (2.0 - cs) * mu_eff).sqrt() * eigenvectors * zw;
 
         // Expectation of N(0, I)
         let chi_n = (dim as f64).sqrt()
@@ -101,7 +104,10 @@ impl State {
             *w * if *w >= 0.0 {
                 1.0
             } else {
-                dim as f64 / (sqrt_inv_c * individuals[i].step()).magnitude().powi(2)
+                dim as f64
+                    / (eigenvectors * individuals[i].untransformed_step())
+                        .magnitude()
+                        .powi(2)
             }
         });
 
@@ -112,7 +118,10 @@ impl State {
             + cmu
                 * weights_cov
                     .enumerate()
-                    .map(|(i, wc)| wc * individuals[i].step() * individuals[i].step().transpose())
+                    .map(|(i, wc)| {
+                        wc * individuals[i].unscaled_step()
+                            * individuals[i].unscaled_step().transpose()
+                    })
                     .sum::<SquareMatrix<f64>>();
 
         // Update eigendecomposition occasionally (updating every generation is unnecessary and
