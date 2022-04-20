@@ -82,13 +82,6 @@ fn criterion_benchmark(c: &mut Criterion) {
         false,
     );
     run_bench(
-        "single iter aCMA-ES n=10 lambda=default plot=false",
-        10,
-        1,
-        Weights::Negative,
-        false,
-    );
-    run_bench(
         "single iter aCMA-ES n=10 lambda=10*default plot=false",
         10,
         10,
