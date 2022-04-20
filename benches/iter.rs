@@ -46,28 +46,35 @@ fn single_iter(state: &mut CMAES<Box<dyn ObjectiveFunction>>) -> Option<Terminat
     state.next()
 }
 
-fn criterion_benchmark(c: &mut Criterion) {
+fn run_bench(
+    c: &mut Criterion,
+    name: &str,
+    dim: usize,
+    lambda_mult: usize,
+    weights: Weights,
+    plot: bool,
+) {
     let mut extra_setup_iters = 0;
-    let mut run_bench = |name, dim, lambda_mult, weights, plot| {
-        c.bench_function(name, |b| {
-            b.iter_batched_ref(
-                || {
-                    let state = get_cmaes_state(dim, lambda_mult, weights, plot, extra_setup_iters);
+    c.bench_function(name, |b| {
+        b.iter_batched_ref(
+            || {
+                let state = get_cmaes_state(dim, lambda_mult, weights, plot, extra_setup_iters);
 
-                    // Vary the number of initial setup iters to include the proper distribution of
-                    // iters with eigen updates
-                    extra_setup_iters =
-                        (extra_setup_iters + 1) % state.generations_per_eigen_update();
+                // Vary the number of initial setup iters to include the proper distribution of
+                // iters with eigen updates
+                extra_setup_iters = (extra_setup_iters + 1) % state.generations_per_eigen_update();
 
-                    state
-                },
-                |mut state| single_iter(&mut state),
-                BatchSize::SmallInput,
-            )
-        });
-    };
+                state
+            },
+            |mut state| single_iter(&mut state),
+            BatchSize::SmallInput,
+        )
+    });
+}
 
+fn criterion_benchmark_short(c: &mut Criterion) {
     run_bench(
+        c,
         "single iter aCMA-ES n=3 lambda=default plot=false",
         3,
         1,
@@ -75,6 +82,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         false,
     );
     run_bench(
+        c,
         "single iter aCMA-ES n=10 lambda=default plot=false",
         10,
         1,
@@ -82,6 +90,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         false,
     );
     run_bench(
+        c,
         "single iter aCMA-ES n=10 lambda=10*default plot=false",
         10,
         10,
@@ -89,6 +98,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         false,
     );
     run_bench(
+        c,
         "single iter CMA-ES n=10 lambda=default plot=false",
         10,
         1,
@@ -96,6 +106,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         false,
     );
     run_bench(
+        c,
         "single iter aCMA-ES n=10 lambda=default plot=true",
         10,
         1,
@@ -103,6 +114,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         true,
     );
     run_bench(
+        c,
         "single iter aCMA-ES n=30 lambda=default plot=false",
         30,
         1,
@@ -111,9 +123,25 @@ fn criterion_benchmark(c: &mut Criterion) {
     );
 }
 
+fn criterion_benchmark_long(c: &mut Criterion) {
+    run_bench(
+        c,
+        "single iter aCMA-ES n=30 lambda=512*default plot=false",
+        30,
+        512,
+        Weights::Negative,
+        false,
+    );
+}
+
 criterion_group!(
-    name = benches;
+    name = benches_short;
     config = Criterion::default().measurement_time(Duration::from_secs(15)).with_plots();
-    targets = criterion_benchmark,
+    targets = criterion_benchmark_short,
 );
-criterion_main!(benches);
+criterion_group!(
+    name = benches_long;
+    config = Criterion::default().measurement_time(Duration::from_secs(100)).with_plots();
+    targets = criterion_benchmark_long,
+);
+criterion_main!(benches_short, benches_long);
