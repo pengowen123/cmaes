@@ -334,13 +334,11 @@ mod tests {
     const TOL_STAGNATION: usize = 40;
 
     fn get_dummy_generation(function_value: f64) -> Vec<EvaluatedPoint> {
-        let zeros = DVector::zeros(DIM);
         (0..100)
             .map(|_| {
                 EvaluatedPoint::new(
-                    zeros.clone(),
-                    zeros.clone(),
-                    &zeros,
+                    DVector::zeros(DIM),
+                    &DVector::zeros(DIM),
                     1.0,
                     &mut |_: &DVector<f64>| function_value,
                 )

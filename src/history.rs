@@ -155,8 +155,7 @@ mod tests {
     #[test]
     fn test_get_median_value() {
         let get_point = |value| {
-            let zeros = DVector::zeros(2);
-            EvaluatedPoint::new(zeros.clone(), zeros.clone(), &zeros, 1.0, &mut |_: &_| {
+            EvaluatedPoint::new(DVector::zeros(2), &DVector::zeros(2), 1.0, &mut |_: &_| {
                 value
             })
             .unwrap()
@@ -190,11 +189,10 @@ mod tests {
         };
 
         let mut update = |h: &mut History| {
-            let zeros = DVector::zeros(4);
             let mut generation = [
-                EvaluatedPoint::new(zeros.clone(), zeros.clone(), &zeros, 0.0, &mut function)
+                EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
                     .unwrap(),
-                EvaluatedPoint::new(zeros.clone(), zeros.clone(), &zeros, 0.0, &mut function)
+                EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
                     .unwrap(),
             ];
 
@@ -287,11 +285,10 @@ mod tests {
         assert!(history.first_median_function_value().is_none());
         assert!(history.best_median_function_value().is_none());
 
-        let zeros = DVector::zeros(4);
         history.update(
             mode,
             &[
-                EvaluatedPoint::new(zeros.clone(), zeros.clone(), &zeros, 0.0, &mut function)
+                EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
                     .unwrap(),
             ],
         );
@@ -305,7 +302,7 @@ mod tests {
         history.update(
             mode,
             &[
-                EvaluatedPoint::new(zeros.clone(), zeros.clone(), &zeros, 0.0, &mut function)
+                EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
                     .unwrap(),
             ],
         );
@@ -337,11 +334,10 @@ mod tests {
         };
         let mut history = History::new();
 
-        let zeros = DVector::zeros(4);
         history.update(
             mode,
             &[
-                EvaluatedPoint::new(zeros.clone(), zeros.clone(), &zeros, 0.0, &mut function)
+                EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
                     .unwrap(),
             ],
         );
@@ -353,7 +349,7 @@ mod tests {
         history.update(
             mode,
             &[
-                EvaluatedPoint::new(zeros.clone(), zeros.clone(), &zeros, 0.0, &mut function)
+                EvaluatedPoint::new(DVector::zeros(4), &DVector::zeros(4), 0.0, &mut function)
                     .unwrap(),
             ],
         );

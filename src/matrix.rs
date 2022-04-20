@@ -5,7 +5,8 @@ use nalgebra::Dynamic;
 
 pub type SquareMatrix<T> = nalgebra::SquareMatrix<T, Dynamic, VecStorage<T, Dynamic, Dynamic>>;
 
-/// A symmetric square matrix that stores and updates its eigendecomposition
+/// A symmetric square matrix that stores and updates its eigendecomposition and inverse square root
+/// (`C^(-1/2)`)
 pub struct CovarianceMatrix {
     /// Covariance matrix
     cov: SquareMatrix<f64>,
@@ -14,6 +15,8 @@ pub struct CovarianceMatrix {
     /// Diagonal matrix containing the square roots of the eigenvalues, which are the
     /// scales of the basis axes (`D`)
     sqrt_eigenvalues: SquareMatrix<f64>,
+    /// The inverse square root of the matrix (`C^(-1/2)`)
+    sqrt_inv: SquareMatrix<f64>,
     /// The transform to the normal distribution represented by the matrix (`B * D`)
     transform: SquareMatrix<f64>,
 }
@@ -25,6 +28,7 @@ impl CovarianceMatrix {
             cov: SquareMatrix::identity(dim, dim),
             eigenvectors: SquareMatrix::identity(dim, dim),
             sqrt_eigenvalues: SquareMatrix::identity(dim, dim),
+            sqrt_inv: SquareMatrix::identity(dim, dim),
             transform: SquareMatrix::identity(dim, dim),
         }
     }
@@ -69,6 +73,11 @@ impl CovarianceMatrix {
 
         self.eigenvectors = eigen.eigenvectors;
         self.sqrt_eigenvalues = SquareMatrix::from_diagonal(&eigen.eigenvalues.map(|x| x.sqrt()));
+        self.sqrt_inv = &self.eigenvectors
+            * self
+                .sqrt_eigenvalues
+                .map(|d| if d > 0.0 { 1.0 / d } else { d })
+            * self.eigenvectors.transpose();
         self.transform = &self.eigenvectors * &self.sqrt_eigenvalues;
 
         Ok(())
@@ -80,6 +89,10 @@ impl CovarianceMatrix {
 
     pub fn sqrt_eigenvalues(&self) -> &SquareMatrix<f64> {
         &self.sqrt_eigenvalues
+    }
+
+    pub fn sqrt_inv(&self) -> &SquareMatrix<f64> {
+        &self.sqrt_inv
     }
 
     /// Returns the transform of the matrix (`B * D`)

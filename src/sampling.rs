@@ -11,14 +11,6 @@ use crate::mode::Mode;
 use crate::state::State;
 use crate::{ObjectiveFunction, ParallelObjectiveFunction};
 
-/// A point sampled from the distribution
-struct SampledPoint {
-    /// The step from the mean before any transformations (N(0, I))
-    untransformed_step: DVector<f64>,
-    /// The step from the mean before scaling by `sigma` (but after rotation) (N(0, cov))
-    unscaled_step: DVector<f64>,
-}
-
 /// A type for sampling and evaluating points from the distribution for each generation
 pub struct Sampler<F> {
     /// Number of dimensions to sample from
@@ -46,7 +38,7 @@ impl<F> Sampler<F> {
 
     /// Shared logic between `sample` and `sample_parallel`
     fn sample_internal<
-        P: Fn(Vec<SampledPoint>, &mut F) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError>,
+        P: Fn(Vec<DVector<f64>>, &mut F) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError>,
     >(
         &mut self,
         state: &State,
@@ -55,19 +47,15 @@ impl<F> Sampler<F> {
     ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
         let normal = Normal::new(0.0, 1.0).unwrap();
 
-        // Random steps in the distribution N(0, I)
-        let z = (0..self.population_size).map(|_| {
-            DVector::from_iterator(
-                self.dim,
-                (0..self.dim).map(|_| normal.sample(&mut self.rng)),
-            )
-        });
-        let y = z
-            .into_iter()
-            .map(|zk| SampledPoint {
-                untransformed_step: zk.clone(),
-                unscaled_step: state.cov_transform() * zk,
+        // Random steps in the distribution N(0, cov)
+        let y = (0..self.population_size)
+            .map(|_| {
+                DVector::from_iterator(
+                    self.dim,
+                    (0..self.dim).map(|_| normal.sample(&mut self.rng)),
+                )
             })
+            .map(|zk| state.cov_transform() * zk)
             .collect();
 
         // Evaluate and rank points
@@ -99,21 +87,15 @@ impl<F: ObjectiveFunction> Sampler<F> {
         state: &State,
         mode: Mode,
     ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
-        let evaluate_points = |points: Vec<SampledPoint>, objective_function: &mut F| {
-            points
-                .into_iter()
-                .map(|point| {
-                    EvaluatedPoint::new(
-                        point.untransformed_step,
-                        point.unscaled_step,
-                        state.mean(),
-                        state.sigma(),
-                        |x| objective_function.evaluate(x),
-                    )
+        self.sample_internal(state, mode, |y, objective_function| {
+            y.into_iter()
+                .map(|yk| {
+                    EvaluatedPoint::new(yk, state.mean(), state.sigma(), |x| {
+                        objective_function.evaluate(x)
+                    })
                 })
                 .collect::<Result<Vec<_>, _>>()
-        };
-        self.sample_internal(state, mode, evaluate_points)
+        })
     }
 }
 
@@ -124,21 +106,15 @@ impl<F: ParallelObjectiveFunction> Sampler<F> {
         state: &State,
         mode: Mode,
     ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
-        let evaluate_points = |points: Vec<SampledPoint>, objective_function: &mut F| {
-            points
-                .into_par_iter()
-                .map(|point| {
-                    EvaluatedPoint::new(
-                        point.untransformed_step,
-                        point.unscaled_step,
-                        state.mean(),
-                        state.sigma(),
-                        |x| objective_function.evaluate_parallel(x),
-                    )
+        self.sample_internal(state, mode, |y, objective_function| {
+            y.into_par_iter()
+                .map(|yk| {
+                    EvaluatedPoint::new(yk, state.mean(), state.sigma(), |x| {
+                        objective_function.evaluate_parallel(x)
+                    })
                 })
                 .collect::<Result<Vec<_>, _>>()
-        };
-        self.sample_internal(state, mode, evaluate_points)
+        })
     }
 }
 
@@ -147,41 +123,31 @@ impl<F: ParallelObjectiveFunction> Sampler<F> {
 pub struct EvaluatedPoint {
     /// The evaluated point
     point: DVector<f64>,
-    /// The point's step from the mean before any transformation, in the distribution N(0, I)
-    untransformed_step: DVector<f64>,
-    /// The point's step from the mean before scaling by `sigma`, in the distribution N(0, cov)
-    unscaled_step: DVector<f64>,
+    /// The point before scaling/translation
+    /// In the distribution N(0, cov)
+    step: DVector<f64>,
     /// The objective value at the point
     value: f64,
 }
 
 impl EvaluatedPoint {
-    /// Returns a new `EvaluatedPoint` from the:
-    /// - Untransformed step from the mean,
-    /// - Unscaled step from the mean,
-    /// - Mean, and
-    /// - Step size
+    /// Returns a new `EvaluatedPoint` from the untransformed step from the mean, the mean, and
+    /// the step size
     ///
     /// Returns `Err` if the objective function returned an invalid value
     pub fn new<F: FnMut(&DVector<f64>) -> f64>(
-        untransformed_step: DVector<f64>,
-        unscaled_step: DVector<f64>,
+        step: DVector<f64>,
         mean: &DVector<f64>,
         sigma: f64,
         mut objective_function: F,
     ) -> Result<Self, InvalidFunctionValueError> {
-        let point = mean + sigma * &unscaled_step;
+        let point = mean + sigma * &step;
         let value = objective_function(&point);
 
         if value.is_nan() {
             Err(InvalidFunctionValueError)
         } else {
-            Ok(Self {
-                point,
-                untransformed_step,
-                unscaled_step,
-                value,
-            })
+            Ok(Self { point, step, value })
         }
     }
 
@@ -189,12 +155,8 @@ impl EvaluatedPoint {
         &self.point
     }
 
-    pub fn untransformed_step(&self) -> &DVector<f64> {
-        &self.untransformed_step
-    }
-
-    pub fn unscaled_step(&self) -> &DVector<f64> {
-        &self.unscaled_step
+    pub fn step(&self) -> &DVector<f64> {
+        &self.step
     }
 
     pub fn value(&self) -> f64 {
@@ -214,33 +176,18 @@ mod tests {
     fn test_evaluated_point() {
         let dim = 5;
         let mean = DVector::from(vec![2.0; dim]);
-        let untransformed_step = DVector::from(vec![1.0; dim]);
-        let unscaled_step = untransformed_step.clone();
+        let step = DVector::from(vec![1.0; dim]);
         let sigma = 3.0;
         let mut function = |x: &DVector<f64>| x.iter().sum();
 
-        let point = EvaluatedPoint::new(
-            untransformed_step.clone(),
-            unscaled_step.clone(),
-            &mean,
-            sigma,
-            &mut function,
-        )
-        .unwrap();
+        let point = EvaluatedPoint::new(step.clone(), &mean, sigma, &mut function).unwrap();
 
-        assert_eq!(point.unscaled_step, DVector::from(vec![1.0; dim]));
+        assert_eq!(point.step, DVector::from(vec![1.0; dim]));
         assert_eq!(point.point, DVector::from(vec![5.0; dim]));
         assert_eq!(point.value, 5.0 * dim as f64);
 
         let mut function_nan = |_: &DVector<f64>| f64::NAN;
-        assert!(EvaluatedPoint::new(
-            untransformed_step,
-            unscaled_step,
-            &mean,
-            sigma,
-            &mut function_nan
-        )
-        .is_err());
+        assert!(EvaluatedPoint::new(step, &mean, sigma, &mut function_nan).is_err());
     }
 
     #[test]
