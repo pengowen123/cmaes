@@ -55,7 +55,7 @@ impl<F> Sampler<F> {
                     (0..self.dim).map(|_| normal.sample(&mut self.rng)),
                 )
             })
-            .map(|zk| state.cov_eigenvectors() * state.cov_sqrt_eigenvalues() * zk)
+            .map(|zk| state.cov_transform() * zk)
             .collect();
 
         // Evaluate and rank points

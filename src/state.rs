@@ -1,8 +1,8 @@
 //! Variable state of the algorithm and updating of that state.
 
-use nalgebra::{DMatrix, DVector};
+use nalgebra::DVector;
 
-use crate::matrix::{CovarianceMatrix, PosDefCovError};
+use crate::matrix::{CovarianceMatrix, PosDefCovError, SquareMatrix};
 use crate::parameters::Parameters;
 use crate::sampling::EvaluatedPoint;
 
@@ -113,7 +113,7 @@ impl State {
                 * weights_cov
                     .enumerate()
                     .map(|(i, wc)| wc * individuals[i].step() * individuals[i].step().transpose())
-                    .sum::<DMatrix<f64>>();
+                    .sum::<SquareMatrix<f64>>();
 
         // Update eigendecomposition occasionally (updating every generation is unnecessary and
         // inefficient for high dim)
@@ -140,16 +140,21 @@ impl State {
         &self.mean
     }
 
-    pub fn cov(&self) -> &DMatrix<f64> {
+    pub fn cov(&self) -> &SquareMatrix<f64> {
         self.cov.cov()
     }
 
-    pub fn cov_eigenvectors(&self) -> &DMatrix<f64> {
+    pub fn cov_eigenvectors(&self) -> &SquareMatrix<f64> {
         self.cov.eigenvectors()
     }
 
-    pub fn cov_sqrt_eigenvalues(&self) -> &DMatrix<f64> {
+    pub fn cov_sqrt_eigenvalues(&self) -> &SquareMatrix<f64> {
         self.cov.sqrt_eigenvalues()
+    }
+
+    /// Returns the transform of the covariance matrix (`B * D`)
+    pub fn cov_transform(&self) -> &SquareMatrix<f64> {
+        self.cov.transform()
     }
 
     /// Returns the current axis ratio of the distribution

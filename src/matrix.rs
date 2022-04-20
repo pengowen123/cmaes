@@ -10,13 +10,15 @@ pub type SquareMatrix<T> = nalgebra::SquareMatrix<T, Dynamic, VecStorage<T, Dyna
 pub struct CovarianceMatrix {
     /// Covariance matrix
     cov: SquareMatrix<f64>,
-    /// Normalized eigenvectors, forming an orthonormal basis of the matrix
+    /// Normalized eigenvectors, forming an orthonormal basis of the matrix (`B`)
     eigenvectors: SquareMatrix<f64>,
     /// Diagonal matrix containing the square roots of the eigenvalues, which are the
-    /// scales of the basis axes
+    /// scales of the basis axes (`D`)
     sqrt_eigenvalues: SquareMatrix<f64>,
     /// The inverse square root of the matrix (`C^(-1/2)`)
     sqrt_inv: SquareMatrix<f64>,
+    /// The transform to the normal distribution represented by the matrix (`B * D`)
+    transform: SquareMatrix<f64>,
 }
 
 impl CovarianceMatrix {
@@ -27,6 +29,7 @@ impl CovarianceMatrix {
             eigenvectors: SquareMatrix::identity(dim, dim),
             sqrt_eigenvalues: SquareMatrix::identity(dim, dim),
             sqrt_inv: SquareMatrix::identity(dim, dim),
+            transform: SquareMatrix::identity(dim, dim),
         }
     }
 
@@ -75,6 +78,7 @@ impl CovarianceMatrix {
                 .sqrt_eigenvalues
                 .map(|d| if d > 0.0 { 1.0 / d } else { d })
             * self.eigenvectors.transpose();
+        self.transform = &self.eigenvectors * &self.sqrt_eigenvalues;
 
         Ok(())
     }
@@ -89,6 +93,11 @@ impl CovarianceMatrix {
 
     pub fn sqrt_inv(&self) -> &SquareMatrix<f64> {
         &self.sqrt_inv
+    }
+
+    /// Returns the transform of the matrix (`B * D`)
+    pub fn transform(&self) -> &SquareMatrix<f64> {
+        &self.transform
     }
 }
 
