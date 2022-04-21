@@ -58,7 +58,7 @@ impl BIPOP {
         if let Some(step_size_factor) = lr_initial_step_size_factor {
             // FIXME: This doesn't catch every invalid case; if set to a tiny value (maybe 1e-150),
             // the 10^-2 factor makes it round to zero and cause a panic when calling
-            // CMAESOptions::build
+            // CMAESOptions::build (also affects Local)
             if !options::is_initial_step_size_valid(step_size_factor) {
                 return Err(InvalidRestartStrategyOptionsError::InitialStepSize);
             }
