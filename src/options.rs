@@ -36,7 +36,9 @@ pub struct CMAESOptions {
     /// This should be set to a first guess at the solution.
     pub initial_mean: DVector<f64>,
     /// Initial step size of the search distribution (`sigma0`). This should be set to a first guess
-    /// at how far the solution is from the initial mean.
+    /// at how far the solution is from the initial mean. To scale the initial search range
+    /// separately in each dimension, the appropriate transformation should be made to the objective
+    /// function itself using [`Scale`][crate::objective_function::Scale]
     pub initial_step_size: f64,
     /// Number of points to generate each generation (`lambda`). Default value is
     /// `4 + floor(3 * ln(dimensions))`.

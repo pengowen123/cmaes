@@ -5,6 +5,8 @@ use nalgebra::DVector;
 use crate::{CMAESOptions, Individual, Mode, ObjectiveFunction, ParallelObjectiveFunction};
 
 const PRINT_GAP_EVALS: usize = 200;
+const INVALID_OPTIONS: &str = "Invalid options";
+const INVALID_VALUE: &str = "Objective function returned an invalid value";
 
 /// Minimizes the value of `f` and returns the best solution found.
 ///
@@ -29,10 +31,10 @@ where
     CMAESOptions::new(initial_mean, initial_step_size)
         .enable_printing(PRINT_GAP_EVALS)
         .build(f)
-        .unwrap()
+        .expect(INVALID_OPTIONS)
         .run()
         .overall_best
-        .unwrap()
+        .expect(INVALID_VALUE)
 }
 
 /// Like [`fmin`], but executes the objective function in parallel using multiple threads.
@@ -56,10 +58,10 @@ where
     CMAESOptions::new(initial_mean, initial_step_size)
         .enable_printing(PRINT_GAP_EVALS)
         .build(f)
-        .unwrap()
+        .expect(INVALID_OPTIONS)
         .run_parallel()
         .overall_best
-        .unwrap()
+        .expect(INVALID_VALUE)
 }
 
 /// Maximizes the value of `f` and returns the best solution found.
@@ -87,10 +89,10 @@ where
         .mode(Mode::Maximize)
         .enable_printing(PRINT_GAP_EVALS)
         .build(f)
-        .unwrap()
+        .expect(INVALID_OPTIONS)
         .run()
         .overall_best
-        .unwrap()
+        .expect(INVALID_VALUE)
 }
 
 /// Like [`fmax`], but executes the objective function in parallel using multiple threads.
@@ -115,8 +117,8 @@ where
         .mode(Mode::Maximize)
         .enable_printing(PRINT_GAP_EVALS)
         .build(f)
-        .unwrap()
+        .expect(INVALID_OPTIONS)
         .run_parallel()
         .overall_best
-        .unwrap()
+        .expect(INVALID_VALUE)
 }
