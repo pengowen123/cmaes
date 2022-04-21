@@ -4,7 +4,7 @@
 
 ### Features
 
-- Added `restart` module that implements various automatic restart algorithms.
+- Added `restart` module that implements the `LR`, `IPOP`, and `BIPOP` automatic restart algorithms.
 - Added `ParallelObjectiveFunction` trait and `CMAES::run_parallel` and `CMAES::next_parallel` methods to allow parallel execution of objective functions.
 - Added `mode` option to choose whether to minimize or maximize the objective function.
 - Added `fmin`, `fmax`, `fmin_parallel`, and `fmax_parallel` functions for convenience in cases where configuration is not required.
