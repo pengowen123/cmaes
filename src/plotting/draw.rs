@@ -23,6 +23,8 @@ use crate::Mode;
 
 /// The font to use for text in the plot
 const FONT: &str = "sans-serif";
+/// The maximum number of elements to allow in a legend before removing it
+const MAX_LEGEND_VALUES: usize = 18;
 
 /// Parameters for a y-axis
 struct YAxis<Y> {
@@ -226,11 +228,18 @@ pub fn draw_mean<'a>(
         Ok(())
     };
 
+    // Don't draw legend if it would be too big
+    let legend_position = if data.mean_dimensions().len() > MAX_LEGEND_VALUES {
+        None
+    } else {
+        Some(SeriesLabelPosition::LowerRight)
+    };
+
     DrawingAreaSetup {
         area,
         function_evals_history: data.function_evals(),
         caption: "Mean",
-        legend_position: Some(SeriesLabelPosition::LowerRight),
+        legend_position,
         y_axis,
         draw,
     }
@@ -293,11 +302,18 @@ pub fn draw_coord_axis_scales<'a>(
         Ok(())
     };
 
+    // Don't draw legend if it would be too big
+    let legend_position = if data.coord_axis_scales().len() > MAX_LEGEND_VALUES {
+        None
+    } else {
+        Some(SeriesLabelPosition::LowerLeft)
+    };
+
     DrawingAreaSetup {
         area,
         function_evals_history: data.function_evals(),
         caption: "Coord. Axis Standard Deviations (without sigma)",
-        legend_position: Some(SeriesLabelPosition::LowerLeft),
+        legend_position,
         y_axis,
         draw,
     }
