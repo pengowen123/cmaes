@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/cmaes)](https://crates.io/crates/cmaes)
 [![Rust](https://github.com/pengowen123/cmaes/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/pengowen123/cmaes/actions/workflows/rust.yml)
 
-A Rust implementation of the CMA-ES optimization algorithm. It is used to minimize the value of an objective function and performs well on high-dimension, non-linear, non-convex, ill-conditioned, and/or noisy problems. See [this paper][5] for details on the algorithm itself.
+A Rust implementation of the CMA-ES optimization algorithm. It is used to minimize or maximize the value of an objective function and performs well on high-dimension, non-linear, non-convex, ill-conditioned, and/or noisy problems. See [this paper][5] for details on the algorithm itself.
 
 ## Dependencies
 
@@ -14,7 +14,7 @@ A Rust implementation of the CMA-ES optimization algorithm. It is used to minimi
 - A C compiler
 - A Fortran compiler (GCC's gfortran works)
 - Rust (tested with rustc 1.57, earlier versions may work)
-- FreeType
+- FreeType (required for `plotters` feature)
 
 Dependencies may differ depending on the selected LAPACK implementation. Building is currently only supported on Linux (see [issue #4][2]).
 
@@ -24,7 +24,7 @@ Add this to your Cargo.toml:
 
 ```
 [dependencies]
-cmaes = "0.1"
+cmaes = "0.2"
 ```
 
 The LAPACK implementation used may be selected through Cargo features (see `Cargo.toml`). `netlib` is built from source by default.
