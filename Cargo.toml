@@ -9,15 +9,15 @@ documentation = "https://docs.rs/cmaes"
 repository = "https://github.com/pengowen123/cmaes"
 
 [features]
-# For BLAS/LAPACK
 default    = ["plotters", "netlib"]
+# For BLAS/LAPACK
 openblas   = ["nalgebra-lapack/openblas"]
 netlib     = ["nalgebra-lapack/netlib"]
 accelerate = ["nalgebra-lapack/accelerate"]
 intel-mkl  = ["nalgebra-lapack/intel-mkl"]
 
 [dependencies]
-rand = "0.8.4"
+rand = "0.8.5"
 rand_chacha = "0.3.1"
 rayon = "1.5.1"
 nalgebra = "0.30.1"
