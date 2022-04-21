@@ -131,6 +131,8 @@ pub struct Restarter {
     dimensions: usize,
     /// The optimization mode
     mode: Mode,
+    /// Whether to perform state updates in parallel
+    parallel_update: bool,
     /// The range in which to generate the initial mean for each run
     search_range: RangeInclusive<f64>,
     /// The target objective function value
@@ -169,6 +171,7 @@ impl Restarter {
                 strategy: options.strategy,
                 dimensions: options.dimensions,
                 mode: options.mode,
+                parallel_update: options.parallel_update,
                 search_range: options.search_range,
                 fun_target: options.fun_target,
                 max_function_evals: options.max_function_evals,
@@ -313,6 +316,7 @@ impl Restarter {
             // Apply default configuration (may be overridden by individual restart strategies)
             let mut options = CMAESOptions::new(initial_mean, DEFAULT_INITIAL_STEP_SIZE)
                 .mode(self.mode)
+                .parallel_update(self.parallel_update)
                 .seed(seed);
             options.max_function_evals = self.max_function_evals_per_run;
             options.max_generations = self.max_generations_per_run;

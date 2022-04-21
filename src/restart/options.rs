@@ -44,6 +44,14 @@ pub struct RestartOptions {
     pub dimensions: usize,
     /// The optimization mode. Default value is [`Minimize`][Mode::Minimize].
     pub mode: Mode,
+    /// Whether to perform state updates in parallel using multiple threads. Default value is
+    /// `false`.
+    ///
+    /// This may improve performance significantly for large population size runs as used in
+    /// [`IPOP`] and [`BIPOP`] if the number of dimensions is also large, but will likely degrade
+    /// performance in other cases. Due to floating point errors this option is generally
+    /// incompatible with setting a fixed [`seed`][Self::seed] for deterministic runs.
+    pub parallel_update: bool,
     /// The range in which to generate the initial mean for each run. The same range is used in each
     /// dimension (i.e., `[A, B]^N`). To scale the search range separately in each dimension, the
     /// appropriate transformation should be made to the objective function itself using
@@ -87,6 +95,7 @@ impl RestartOptions {
             strategy,
             dimensions,
             mode: Mode::Minimize,
+            parallel_update: false,
             search_range,
             fun_target: None,
             max_function_evals: None,
@@ -101,6 +110,12 @@ impl RestartOptions {
     /// Sets the optimization mode.
     pub fn mode(mut self, mode: Mode) -> Self {
         self.mode = mode;
+        self
+    }
+
+    /// Sets whether to perform state updates in parallel.
+    pub fn parallel_update(mut self, parallel_update: bool) -> Self {
+        self.parallel_update = parallel_update;
         self
     }
 
