@@ -53,6 +53,15 @@ pub struct CMAESOptions {
     /// The distribution to use when assigning weights to individuals. Default value is
     /// [`Weights::Negative`].
     pub weights: Weights,
+    /// Whether to perform the state update in parallel using multiple threads. Default value is
+    /// `false`.
+    ///
+    /// This will likely degrade performance for smaller population sizes but can be a major
+    /// performance boost for very large population sizes (e.g., `512 * default`) as might be used
+    /// with [`IPOP`][crate::restart::IPOP] or [`BIPOP`][crate::restart::BIPOP]). Due to floating
+    /// point errors this will reduce the determinism guarantee of the [`seed`][Self::seed] option,
+    /// but the degree to which determinism is affected can vary significantly.
+    pub parallel_update: bool,
     /// The learning rate for adapting the mean. Can be reduced for noisy functions. Default value
     /// is `1.0`.
     pub cm: f64,
@@ -100,6 +109,9 @@ pub struct CMAESOptions {
     pub tol_condition_cov: f64,
     /// The seed for the RNG used in the algorithm. Can be set manually for deterministic runs. By
     /// default a random seed is used if this field is `None`.
+    ///
+    /// If used in conjunction with the [`parallel_update`][Self::parallel_update] option, the
+    /// determinism guarantee is reduced due to floating point errors.
     pub seed: Option<u64>,
     /// Options for the data plot. Default value is `None`, meaning no plot will be generated. See
     /// [`Plot`][crate::plotting::Plot].
@@ -129,6 +141,7 @@ impl CMAESOptions {
             initial_step_size,
             population_size: 4 + (3.0 * (dimensions as f64).ln()).floor() as usize,
             weights: Weights::Negative,
+            parallel_update: false,
             cm: 1.0,
             max_function_evals: None,
             max_generations: None,
@@ -176,6 +189,12 @@ impl CMAESOptions {
     /// possible distributions.
     pub fn weights(mut self, weights: Weights) -> Self {
         self.weights = weights;
+        self
+    }
+
+    /// Sets whether to perform the state update in parallel.
+    pub fn parallel_update(mut self, parallel_update: bool) -> Self {
+        self.parallel_update = parallel_update;
         self
     }
 

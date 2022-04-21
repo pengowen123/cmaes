@@ -64,7 +64,7 @@ impl TerminationParameters {
     }
 }
 
-/// Stores constant parameters for the algorithm. Obtained by calling
+/// Stores constant parameters and options for the algorithm. Obtained by calling
 /// [`CMAES::parameters`][crate::CMAES::parameters].
 #[derive(Clone, Debug)]
 pub struct Parameters {
@@ -98,6 +98,8 @@ pub struct Parameters {
     termination: TerminationParameters,
     /// Seed for the RNG
     seed: u64,
+    /// Whether to use threads for the state update
+    parallel_update: bool,
 }
 
 impl Parameters {
@@ -143,6 +145,7 @@ impl Parameters {
             damp_s,
             termination,
             seed,
+            parallel_update: options.parallel_update,
         }
     }
 
@@ -295,5 +298,10 @@ impl Parameters {
     /// Returns the seed for the RNG.
     pub fn seed(&self) -> u64 {
         self.seed
+    }
+
+    /// Returns whether the state update is performed in parallel.
+    pub fn parallel_update(&self) -> bool {
+        self.parallel_update
     }
 }

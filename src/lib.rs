@@ -603,7 +603,11 @@ impl<F: ObjectiveFunction> CMAES<F> {
     /// Returns `Err` if an invalid function value was encountered.
     fn sample(&mut self) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
         // Sample points
-        let individuals = self.sampler.sample(&self.state, self.parameters.mode())?;
+        let individuals = self.sampler.sample(
+            &self.state,
+            self.parameters.mode(),
+            self.parameters.parallel_update(),
+        )?;
 
         self.sample_internal(&individuals);
 
@@ -651,9 +655,11 @@ impl<F: ParallelObjectiveFunction> CMAES<F> {
 
     /// Like `sample`, but evaluates the sampled points using multiple threads
     fn sample_parallel(&mut self) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
-        let individuals = self
-            .sampler
-            .sample_parallel(&self.state, self.parameters.mode())?;
+        let individuals = self.sampler.sample_parallel(
+            &self.state,
+            self.parameters.mode(),
+            self.parameters.parallel_update(),
+        )?;
 
         self.sample_internal(&individuals);
 

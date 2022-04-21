@@ -43,20 +43,26 @@ impl<F> Sampler<F> {
         &mut self,
         state: &State,
         mode: Mode,
+        parallel_update: bool,
         evaluate_points: P,
     ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
         let normal = Normal::new(0.0, 1.0).unwrap();
 
-        // Random steps in the distribution N(0, cov)
-        let y = (0..self.population_size)
+        // Random steps in the distribution N(0, I)
+        let z = (0..self.population_size)
             .map(|_| {
                 DVector::from_iterator(
                     self.dim,
                     (0..self.dim).map(|_| normal.sample(&mut self.rng)),
                 )
             })
-            .map(|zk| state.cov_transform() * zk)
-            .collect();
+            .collect::<Vec<_>>();
+        let transform = |zk| state.cov_transform() * zk;
+        let y = if parallel_update {
+            z.into_par_iter().map(transform).collect()
+        } else {
+            z.into_iter().map(transform).collect()
+        };
 
         // Evaluate and rank points
         let mut points = evaluate_points(y, &mut self.objective_function)?;
@@ -86,8 +92,9 @@ impl<F: ObjectiveFunction> Sampler<F> {
         &mut self,
         state: &State,
         mode: Mode,
+        parallel_update: bool,
     ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
-        self.sample_internal(state, mode, |y, objective_function| {
+        self.sample_internal(state, mode, parallel_update, |y, objective_function| {
             y.into_iter()
                 .map(|yk| {
                     EvaluatedPoint::new(yk, state.mean(), state.sigma(), |x| {
@@ -105,8 +112,9 @@ impl<F: ParallelObjectiveFunction> Sampler<F> {
         &mut self,
         state: &State,
         mode: Mode,
+        parallel_update: bool,
     ) -> Result<Vec<EvaluatedPoint>, InvalidFunctionValueError> {
-        self.sample_internal(state, mode, |y, objective_function| {
+        self.sample_internal(state, mode, parallel_update, |y, objective_function| {
             y.into_par_iter()
                 .map(|yk| {
                     EvaluatedPoint::new(yk, state.mean(), state.sigma(), |x| {
@@ -203,7 +211,7 @@ mod tests {
 
         let n = 5;
         for _ in 0..n {
-            let individuals = sampler.sample(&state, Mode::Minimize).unwrap();
+            let individuals = sampler.sample(&state, Mode::Minimize, false).unwrap();
 
             assert_eq!(individuals.len(), population_size);
         }
@@ -217,7 +225,7 @@ mod tests {
             1,
         );
 
-        assert!(sampler_nan.sample(&state, Mode::Minimize).is_err());
+        assert!(sampler_nan.sample(&state, Mode::Minimize, false).is_err());
     }
 
     fn sample_sort(mode: Mode, expected: [f64; 5]) {
@@ -238,7 +246,7 @@ mod tests {
         let mut sampler = Sampler::new(dim, population_size, function, 1);
         let state = State::new(vec![0.0; dim].into(), 2.0);
 
-        let individuals = sampler.sample(&state, mode).unwrap();
+        let individuals = sampler.sample(&state, mode, false).unwrap();
         let values = individuals
             .into_iter()
             .map(|ind| ind.value)

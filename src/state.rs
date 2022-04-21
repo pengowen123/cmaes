@@ -5,6 +5,7 @@ use nalgebra::DVector;
 use crate::matrix::{CovarianceMatrix, PosDefCovError, SquareMatrix};
 use crate::parameters::Parameters;
 use crate::sampling::EvaluatedPoint;
+use rayon::prelude::*;
 
 /// Stores the variable state of the algorithm and handles updating it
 pub struct State {
@@ -97,29 +98,33 @@ impl State {
         self.sigma *= ((cs / damp_s) * ((self.path_sigma.magnitude() / chi_n) - 1.0)).exp();
 
         // Update covariance matrix
-        let weights_cov = params.weights().iter().enumerate().map(|(i, w)| {
-            *w * if *w >= 0.0 {
-                1.0
-            } else {
-                dim as f64
+
+        // Calculates the weighted contribution of each individual to the rank-mu update
+        let map_weights = |(i, w): (usize, f64)| {
+            // Scale negative weights to maintain positive definiteness of cov
+            let mut wc = w;
+            if w < 0.0 {
+                wc *= dim as f64
                     / (sqrt_inv_c * individuals[i].unscaled_step())
                         .magnitude()
-                        .powi(2)
+                        .powi(2);
             }
-        });
+
+            wc * individuals[i].unscaled_step() * individuals[i].unscaled_step().transpose()
+        };
+        let rank_mu_update = if params.parallel_update() {
+            rank_mu_update_parallel(params.weights().as_slice(), map_weights, || {
+                SquareMatrix::zeros(dim, dim)
+            })
+        } else {
+            rank_mu_update(params.weights().as_slice(), map_weights)
+        };
 
         let delta_hs = (1.0 - hs) * cc * (2.0 - cc);
         let cov_new = (1.0 + c1 * delta_hs - c1 - cmu * params.weights().iter().sum::<f64>())
             * self.cov.cov()
             + c1 * &self.path_c * self.path_c.transpose()
-            + cmu
-                * weights_cov
-                    .enumerate()
-                    .map(|(i, wc)| {
-                        wc * individuals[i].unscaled_step()
-                            * individuals[i].unscaled_step().transpose()
-                    })
-                    .sum::<SquareMatrix<f64>>();
+            + cmu * rank_mu_update;
 
         // Update eigendecomposition occasionally (updating every generation is unnecessary and
         // inefficient for high dim)
@@ -204,4 +209,26 @@ impl State {
     pub fn mut_sigma(&mut self) -> &mut f64 {
         &mut self.sigma
     }
+}
+
+/// Calculates the rank-mu update term (ignoring cmu)
+fn rank_mu_update<F>(weights: &[f64], map_weights: F) -> SquareMatrix<f64>
+where
+    F: Fn((usize, f64)) -> SquareMatrix<f64>,
+{
+    weights.iter().cloned().enumerate().map(map_weights).sum()
+}
+
+/// Like `rank_mu_update`, but uses parallel iterators instead
+fn rank_mu_update_parallel<F, I>(weights: &[f64], map_weights: F, identity: I) -> SquareMatrix<f64>
+where
+    F: Send + Sync + Fn((usize, f64)) -> SquareMatrix<f64>,
+    I: Send + Sync + Fn() -> SquareMatrix<f64>,
+{
+    weights
+        .par_iter()
+        .cloned()
+        .enumerate()
+        .map(map_weights)
+        .reduce(identity, |a, b| a + b)
 }

@@ -17,6 +17,7 @@ fn rosenbrock(x: &DVector<f64>) -> f64 {
 // Builds a `CMAES` with a random initial mean and advances it `100 + extra_setup_iters` iterations
 // to avoid benchmarking based on the trivial initial state
 fn get_cmaes_state(
+    parallel_update: bool,
     dim: usize,
     lambda_mult: usize,
     weights: Weights,
@@ -26,7 +27,9 @@ fn get_cmaes_state(
     let initial_mean = (0..dim)
         .map(|_| 3.0 * rand::random::<f64>())
         .collect::<Vec<_>>();
-    let mut options = CMAESOptions::new(initial_mean, 1.0).weights(weights);
+    let mut options = CMAESOptions::new(initial_mean, 1.0)
+        .weights(weights)
+        .parallel_update(parallel_update);
     options.population_size *= lambda_mult;
 
     if plot {
@@ -49,6 +52,7 @@ fn single_iter(state: &mut CMAES<Box<dyn ObjectiveFunction>>) -> Option<Terminat
 fn run_bench(
     c: &mut Criterion,
     name: &str,
+    parallel_update: bool,
     dim: usize,
     lambda_mult: usize,
     weights: Weights,
@@ -58,7 +62,14 @@ fn run_bench(
     c.bench_function(name, |b| {
         b.iter_batched_ref(
             || {
-                let state = get_cmaes_state(dim, lambda_mult, weights, plot, extra_setup_iters);
+                let state = get_cmaes_state(
+                    parallel_update,
+                    dim,
+                    lambda_mult,
+                    weights,
+                    plot,
+                    extra_setup_iters,
+                );
 
                 // Vary the number of initial setup iters to include the proper distribution of
                 // iters with eigen updates
@@ -76,6 +87,7 @@ fn criterion_benchmark_short(c: &mut Criterion) {
     run_bench(
         c,
         "single iter aCMA-ES n=3 lambda=default plot=false",
+        false,
         3,
         1,
         Weights::Negative,
@@ -84,6 +96,7 @@ fn criterion_benchmark_short(c: &mut Criterion) {
     run_bench(
         c,
         "single iter aCMA-ES n=10 lambda=default plot=false",
+        false,
         10,
         1,
         Weights::Negative,
@@ -92,6 +105,7 @@ fn criterion_benchmark_short(c: &mut Criterion) {
     run_bench(
         c,
         "single iter aCMA-ES n=10 lambda=10*default plot=false",
+        false,
         10,
         10,
         Weights::Negative,
@@ -100,6 +114,7 @@ fn criterion_benchmark_short(c: &mut Criterion) {
     run_bench(
         c,
         "single iter CMA-ES n=10 lambda=default plot=false",
+        false,
         10,
         1,
         Weights::Positive,
@@ -108,6 +123,7 @@ fn criterion_benchmark_short(c: &mut Criterion) {
     run_bench(
         c,
         "single iter aCMA-ES n=10 lambda=default plot=true",
+        false,
         10,
         1,
         Weights::Negative,
@@ -116,6 +132,7 @@ fn criterion_benchmark_short(c: &mut Criterion) {
     run_bench(
         c,
         "single iter aCMA-ES n=30 lambda=default plot=false",
+        false,
         30,
         1,
         Weights::Negative,
@@ -126,7 +143,17 @@ fn criterion_benchmark_short(c: &mut Criterion) {
 fn criterion_benchmark_long(c: &mut Criterion) {
     run_bench(
         c,
-        "single iter aCMA-ES n=30 lambda=512*default plot=false",
+        "single iter aCMA-ES sequential update n=30 lambda=512*default plot=false",
+        false,
+        30,
+        512,
+        Weights::Negative,
+        false,
+    );
+    run_bench(
+        c,
+        "single iter aCMA-ES parallel update n=30 lambda=512*default plot=false",
+        true,
         30,
         512,
         Weights::Negative,

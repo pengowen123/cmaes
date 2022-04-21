@@ -26,6 +26,7 @@
 - Added `fmin` and `fmin_parallel` functions for convenience in cases where configuration is not required.
 - Added median objective function value to data plots.
 - Added `mode` option to choose whether to minimize or maximize the objective function.
+- Added `parallel_update` option to choose whether to perform the state update in parallel, which can improve performance for large population sizes.
 
 ## 0.1.1 (March 4th, 2022)
 

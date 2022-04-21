@@ -203,7 +203,7 @@ mod consistent {
     use super::*;
 
     // Must be updated after every change to the algorithm (after thorough testing)
-    fn fixed_seed(mode: Mode, use_threads: bool) {
+    fn fixed_seed(mode: Mode, parallel_function: bool, parallel_update: bool) {
         let function = match mode {
             Mode::Minimize => rosenbrock,
             // Flip the function so maximizing it makes sense
@@ -214,6 +214,7 @@ mod consistent {
         let mut cmaes_state = CMAESOptions::new(vec![0.0; dim], 5.0)
             .mode(mode)
             .seed(seed)
+            .parallel_update(parallel_update)
             .build(function)
             .unwrap();
 
@@ -258,7 +259,7 @@ mod consistent {
 
         let generations = 10;
         for _ in 0..generations {
-            let _ = if use_threads {
+            let _ = if parallel_function {
                 cmaes_state.next_parallel()
             } else {
                 cmaes_state.next()
@@ -324,18 +325,25 @@ mod consistent {
 
     #[test]
     fn test_fixed_seed_minimize() {
-        fixed_seed(Mode::Minimize, false);
+        fixed_seed(Mode::Minimize, false, false);
     }
 
     #[test]
     fn test_fixed_seed_maximize() {
-        fixed_seed(Mode::Maximize, false);
+        fixed_seed(Mode::Maximize, false, false);
     }
 
-    // Check that using threads doesn't affect the results
+    // Check that parallel objective function execution doesn't affect the results
     #[test]
-    fn test_fixed_seed_minimize_parallel() {
-        fixed_seed(Mode::Minimize, true);
+    fn test_fixed_seed_minimize_parallel_objective_function() {
+        fixed_seed(Mode::Minimize, true, false);
+    }
+
+    // Check that parallel state updates don't affect the results too much (they do after some
+    // number of iterations, but the results shouldn't differ much at first)
+    #[test]
+    fn test_fixed_seed_minimize_parallel_update() {
+        fixed_seed(Mode::Minimize, true, true);
     }
 
     // Checks that certain usage patterns work
