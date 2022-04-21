@@ -179,7 +179,7 @@ impl CMAESOptions {
         self
     }
 
-    /// Changes the population size from the default value. Must be at least 4.
+    /// Changes the population size from the default value. Must be at least 2.
     pub fn population_size(mut self, population_size: usize) -> Self {
         self.population_size = population_size;
         self
@@ -315,7 +315,7 @@ impl CMAESOptions {
 pub enum InvalidOptionsError {
     /// The number of dimensions is set to zero.
     Dimensions,
-    /// The population size is too small (must be at least 4).
+    /// The population size is too small (must be at least 2).
     PopulationSize,
     /// The initial step size is negative or non-normal.
     InitialStepSize,
@@ -340,7 +340,7 @@ mod tests {
             .is_ok());
         assert!(matches!(
             CMAESOptions::new(vec![1.0; 5], 1.0)
-                .population_size(3)
+                .population_size(1)
                 .build(dummy_function),
             Err(InvalidOptionsError::PopulationSize),
         ));

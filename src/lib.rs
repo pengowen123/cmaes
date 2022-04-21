@@ -231,7 +231,7 @@ impl<F> CMAES<F> {
             return Err(InvalidOptionsError::Dimensions);
         }
 
-        if options.population_size < 4 {
+        if options.population_size < 2 {
             return Err(InvalidOptionsError::PopulationSize);
         }
 
