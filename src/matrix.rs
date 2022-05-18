@@ -61,8 +61,23 @@ impl CovarianceMatrix {
     ///
     /// Returns `Err` if the matrix is not positive-definite
     fn update_eigendecomposition(&mut self) -> Result<(), PosDefCovError> {
+        #[cfg(any(
+            feature = "openblas",
+            feature = "netlib",
+            feature = "accelerate",
+            feature = "intel-mkl"
+        ))]
         let mut eigen =
             nalgebra_lapack::SymmetricEigen::try_new(self.cov.clone()).ok_or(PosDefCovError)?;
+
+        #[cfg(not(any(
+            feature = "openblas",
+            feature = "netlib",
+            feature = "accelerate",
+            feature = "intel-mkl"
+        )))]
+        let mut eigen =
+            nalgebra::SymmetricEigen::try_new(self.cov.clone(), 1e-20, 0).ok_or(PosDefCovError)?;
 
         for mut col in eigen.eigenvectors.column_iter_mut() {
             col.normalize_mut();

@@ -705,12 +705,12 @@ mod tests {
             .run(|| function);
 
         assert_eq!(10, results.runs);
-        assert_eq!(5928, results.function_evals);
+        assert_eq!(5790, results.function_evals);
         assert_eq!(RestartTerminationReason::MaxRuns, results.reason);
         let best = results.best.unwrap();
         let eps = 1e-12;
         assert_approx_eq!(1.0000000002890303e-8, best.value, eps);
-        assert_approx_eq!(2.0000000010532704, best.point[0], eps);
-        assert_approx_eq!(1.000000001334513, best.point[1], eps);
+        assert_approx_eq!(2.00000000075140, best.point[0], eps);
+        assert_approx_eq!(0.9999999989799438, best.point[1], eps);
     }
 }

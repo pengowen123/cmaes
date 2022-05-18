@@ -9,7 +9,7 @@ documentation = "https://docs.rs/cmaes"
 repository = "https://github.com/pengowen123/cmaes"
 
 [features]
-default    = ["plotters", "netlib"]
+default    = ["plotters"]
 # For BLAS/LAPACK
 openblas   = ["nalgebra-lapack/openblas"]
 netlib     = ["nalgebra-lapack/netlib"]
@@ -25,6 +25,7 @@ statrs = "0.15.0"
 
 [dependencies.nalgebra-lapack]
 version = "0.21.0"
+optional = true
 default-features = false
 
 [dependencies.plotters]
