@@ -9,14 +9,13 @@ A Rust implementation of the CMA-ES optimization algorithm. It is used to minimi
 
 `cmaes` uses some external libraries, so the following dependencies are required:
 
-- Make
-- CMake
-- A C compiler
-- A Fortran compiler (GCC's gfortran works)
 - Rust (tested with rustc 1.57, earlier versions may work)
-- FreeType (required for `plotters` feature)
-
-Dependencies may differ depending on the selected LAPACK implementation. Building is currently only supported on Linux (see [issue #4][2]).
+- FreeType (required for `plotters` feature, enabled by default)
+- Depending on the selected LAPACK implementation (which can be enabled by feature, but by default is not), you need the libraries for that particular choice, which is *at least*
+  - Make
+  - CMake
+  - A C compiler
+  - A Fortran compiler (GCC's gfortran works)
 
 ## Quick Start
 
@@ -27,7 +26,7 @@ Add this to your Cargo.toml:
 cmaes = "0.2"
 ```
 
-The LAPACK implementation used may be selected through Cargo features (see `Cargo.toml`). `netlib` is built from source by default.
+The LAPACK implementation used may be selected through Cargo features (see `Cargo.toml`). By default, pure Rust implementation from nalgebra is used.
 
 Then, to optimize a function:
 ```rust
