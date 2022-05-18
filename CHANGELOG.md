@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 (May 18th, 2022)
+
+### Features
+
+- Made LAPACK dependency optional, defaulting to using `nalgebra`. This allows the library to be built on Windows
+([#8](https://github.com/pengowen123/cmaes/pull/8)).
+
 ## 0.2.0 (April 21st, 2022)
 
 ### Features
