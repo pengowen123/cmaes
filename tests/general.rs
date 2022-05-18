@@ -209,7 +209,7 @@ mod consistent {
             // Flip the function so maximizing it makes sense
             Mode::Maximize => (|x| -rosenbrock(x)) as fn(&DVector<f64>) -> f64,
         };
-        let seed = 76561199230847669;
+        let seed = 26001788261131793;
         let dim = 4;
         let mut cmaes_state = CMAESOptions::new(vec![0.0; dim], 5.0)
             .mode(mode)
@@ -270,34 +270,34 @@ mod consistent {
         assert_eq!(cmaes_state.function_evals(), lambda * generations);
 
         let mean_expected = [
-            -0.04442673185635858,
-            0.02353654392996063,
-            0.4096764724597227,
-            0.2042616278234617,
+            0.12571237293855164,
+            0.2280643277648201,
+            0.17627386121151933,
+            0.6616196164462642,
         ];
         for (x, expected) in cmaes_state.mean().iter().zip(mean_expected) {
             assert_approx_eq!(x, expected, eps);
         }
 
         let eigenvalues_expected = [
-            0.22289900256933676,
-            0.26348092262682127,
-            0.4463174403572355,
-            0.6706156210749331,
+            1.3068929025500882,
+            0.1358452979163828,
+            0.6455285582368571,
+            0.4569850734591793,
         ];
         for (x, expected) in cmaes_state.eigenvalues().iter().zip(eigenvalues_expected) {
             assert_approx_eq!(x, expected, eps);
         }
 
-        assert_approx_eq!(cmaes_state.axis_ratio(), 1.7345338122305334, eps);
-        assert_approx_eq!(cmaes_state.sigma(), 1.0419239528728568, eps);
+        assert_approx_eq!(cmaes_state.axis_ratio(), 3.1016850332870485, eps);
+        assert_approx_eq!(cmaes_state.sigma(), 1.6845266959237821, eps);
 
         let current_best = cmaes_state.current_best_individual().unwrap();
         let current_best_expected = [
-            0.21674424807265003,
-            0.45885012656947854,
-            0.3323521341777004,
-            0.3997481950851467,
+            0.14583793998288663,
+            0.6158716510808776,
+            0.24480184155861673,
+            0.33848727834833875,
         ];
         for (x, expected) in current_best.point.iter().zip(current_best_expected) {
             assert_approx_eq!(x, expected, eps);
@@ -307,20 +307,20 @@ mod consistent {
             Mode::Minimize => 1.0,
             Mode::Maximize => -1.0,
         };
-        assert_approx_eq!(current_best.value, 28.168566541912956 * expected_sign, eps);
+        assert_approx_eq!(current_best.value, 46.37118717981843 * expected_sign, eps);
 
         let overall_best = cmaes_state.overall_best_individual().unwrap();
         let overall_best_expected = [
-            0.21674424807265003,
-            0.45885012656947854,
-            0.3323521341777004,
-            0.3997481950851467,
+            0.14583793998288724,
+            0.6158716510808762,
+            0.24480184155861373,
+            0.3384872783483405,
         ];
         for (x, expected) in overall_best.point.iter().zip(overall_best_expected) {
             assert_approx_eq!(x, expected, eps);
         }
 
-        assert_approx_eq!(overall_best.value, 28.168566541912956 * expected_sign, eps);
+        assert_approx_eq!(overall_best.value, 46.371187179818456 * expected_sign, eps);
     }
 
     #[test]
