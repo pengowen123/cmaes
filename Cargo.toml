@@ -19,7 +19,7 @@ intel-mkl  = ["nalgebra-lapack/intel-mkl"]
 [dependencies]
 rand = "0.8"
 rand_chacha = "0.3"
-rayon = "1.5.1"
+rayon = "1"
 nalgebra = "0.33"
 statrs = "0.18"
 
