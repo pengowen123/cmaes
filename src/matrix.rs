@@ -1,9 +1,9 @@
 //! Types related to matrix math.
 
 use nalgebra::base::VecStorage;
-use nalgebra::Dynamic;
+use nalgebra::Dyn;
 
-pub type SquareMatrix<T> = nalgebra::SquareMatrix<T, Dynamic, VecStorage<T, Dynamic, Dynamic>>;
+pub type SquareMatrix<T> = nalgebra::SquareMatrix<T, Dyn, VecStorage<T, Dyn, Dyn>>;
 
 /// A symmetric square matrix that stores and updates its eigendecomposition and inverse square root
 /// (`C^(-1/2)`)
