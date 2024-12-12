@@ -348,6 +348,7 @@ mod consistent {
 
     // Checks that certain usage patterns work
     #[test]
+    #[allow(dead_code)]
     fn test_api_usage() {
         // Non-static objective function (references something or is a reference)
         let mut x = 0.0;
