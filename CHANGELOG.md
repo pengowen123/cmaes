@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2 (December 13th, 2024)
+
+### Miscellaneous
+
+- Bumped dependencies ([#9](https://github.com/pengowen123/cmaes/pull/9)).
+
 ## 0.2.1 (May 18th, 2022)
 
 ### Features
