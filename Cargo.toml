@@ -1,6 +1,6 @@
 [package]
 name = "cmaes"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "An implementation of the CMA-ES optimization algorithm."
 readme = "README.md"
@@ -17,9 +17,9 @@ accelerate = ["nalgebra-lapack/accelerate"]
 intel-mkl  = ["nalgebra-lapack/intel-mkl"]
 
 [dependencies]
-rand = "0.8"
-rand_chacha = "0.3"
-rayon = "1"
+rand = "0.8.5"
+rand_chacha = "0.3.1"
+rayon = "1.5.1"
 nalgebra = "0.33"
 statrs = "0.18"
 
@@ -29,13 +29,13 @@ optional = true
 default-features = false
 
 [dependencies.plotters]
-version = "0.3"
+version = "0.3.1"
 optional = true
 default-features = false
-features = [ "bitmap_backend", "bitmap_encoder", "line_series" ]
+features = [ "ttf", "bitmap_backend", "bitmap_encoder", "line_series" ]
 
 [dev-dependencies]
-assert_approx_eq = "1.1.0"
+assert_approx_eq = "1.1"
 
 [dev-dependencies.criterion]
 version = "0.3.5"
