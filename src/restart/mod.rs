@@ -133,6 +133,8 @@ pub struct Restarter {
     mode: Mode,
     /// Whether to perform state updates in parallel
     parallel_update: bool,
+    /// The default options to use for a fresh start.
+    default_options: CMAESOptions,
     /// The range in which to generate the initial mean for each run
     search_range: RangeInclusive<f64>,
     /// The target objective function value
@@ -172,6 +174,7 @@ impl Restarter {
                 dimensions: options.dimensions,
                 mode: options.mode,
                 parallel_update: options.parallel_update,
+                default_options: options.default_options,
                 search_range: options.search_range,
                 fun_target: options.fun_target,
                 max_function_evals: options.max_function_evals,
@@ -314,7 +317,8 @@ impl Restarter {
             let seed = self.rng.gen();
 
             // Apply default configuration (may be overridden by individual restart strategies)
-            let mut options = CMAESOptions::new(initial_mean, DEFAULT_INITIAL_STEP_SIZE)
+            let mut options = self.default_options.clone()
+                .initial_mean(initial_mean)
                 .mode(self.mode)
                 .parallel_update(self.parallel_update)
                 .seed(seed);
