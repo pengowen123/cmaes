@@ -4,8 +4,9 @@
 use std::ops::RangeInclusive;
 use std::time::Duration;
 
-use super::{RestartStrategy, Restarter};
-use crate::Mode;
+
+use super::{DEFAULT_INITIAL_STEP_SIZE, RestartStrategy, Restarter};
+use crate::{CMAESOptions, Mode};
 
 /// Represents invalid options for a `Restarter`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,6 +54,8 @@ pub struct RestartOptions {
     /// floating point errors this option is generally incompatible with setting a fixed
     /// [`seed`][Self::seed] for deterministic runs.
     pub parallel_update: bool,
+    /// The default options to use. Will be cloned and adjusted for each restart.
+    pub default_options: CMAESOptions,
     /// The range in which to generate the initial mean for each run. The same range is used in each
     /// dimension (i.e., `[A, B]^N`). To scale the search range separately in each dimension, the
     /// appropriate transformation should be made to the objective function itself using
@@ -97,6 +100,7 @@ impl RestartOptions {
             dimensions,
             mode: Mode::Minimize,
             parallel_update: false,
+            default_options: CMAESOptions::new(vec![0.0; dimensions], DEFAULT_INITIAL_STEP_SIZE),
             search_range,
             fun_target: None,
             max_function_evals: None,
@@ -117,6 +121,12 @@ impl RestartOptions {
     /// Sets whether to perform state updates in parallel.
     pub fn parallel_update(mut self, parallel_update: bool) -> Self {
         self.parallel_update = parallel_update;
+        self
+    }
+
+    /// Sets the default options
+    pub fn default_options(mut self, options: CMAESOptions) -> Self {
+        self.default_options = options;
         self
     }
 

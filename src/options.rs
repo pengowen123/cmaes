@@ -28,7 +28,7 @@ use crate::CMAES;
 ///     .build(function)
 ///     .unwrap();
 /// ```
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CMAESOptions {
     /// The mode to use when optimizing the objective function. Default value is [`Mode::Minimize`].
     pub mode: Mode,
