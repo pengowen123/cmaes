@@ -128,6 +128,8 @@ pub use crate::options::CMAESOptions;
 pub use crate::parameters::Weights;
 #[cfg(feature = "plotters")]
 pub use crate::plotting::PlotOptions;
+pub use crate::sampling::Bounds;
+pub use crate::sampling::Constraints;
 pub use crate::termination::TerminationReason;
 
 use std::f64;
@@ -243,17 +245,20 @@ impl<F> CMAES<F> {
             return Err(InvalidOptionsError::Cm);
         }
 
-        // Initialize point sampler
         let seed = options.seed.unwrap_or_else(rand::random);
+
+        // Initialize constant parameters according to the options
+        let parameters = Parameters::from_options(&options, seed);
+
+        // Initialize point sampler
         let sampler = Sampler::new(
             dimensions,
+            options.constraints,
+            options.max_resamples,
             options.population_size,
             objective_function,
             seed,
         );
-
-        // Initialize constant parameters according to the options
-        let parameters = Parameters::from_options(&options, seed);
 
         // Initialize variable parameters
         let state = State::new(options.initial_mean, options.initial_step_size);
