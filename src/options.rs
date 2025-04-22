@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use crate::mode::Mode;
 use crate::parameters::Weights;
+use crate::sampling::Bounds;
 #[cfg(feature = "plotters")]
 use crate::PlotOptions;
 use crate::CMAES;
@@ -52,6 +53,12 @@ pub struct CMAESOptions {
     /// [`BIPOP`][crate::restart::BIPOP] restart strategies (see the [`restart`][crate::restart]
     /// module).
     pub population_size: usize,
+    /// The bounds within which to search. Resamples until all samples are in bounds or
+    /// `max_resamples` are hit. Default value is `None`.
+    pub bounds: Option<Bounds>,
+    /// How many times to resample points in order to stay inside `bounds`.
+    /// `None` disables the limit. Defaults to 10.
+    pub max_resamples: Option<usize>,
     /// The distribution to use when assigning weights to individuals. Default value is
     /// [`Weights::Negative`].
     pub weights: Weights,
@@ -142,6 +149,8 @@ impl CMAESOptions {
             initial_mean,
             initial_step_size,
             population_size: 4 + (3.0 * (dimensions as f64).ln()).floor() as usize,
+            bounds: None,
+            max_resamples: Some(10),
             weights: Weights::Negative,
             parallel_update: false,
             cm: 1.0,
@@ -184,6 +193,18 @@ impl CMAESOptions {
     /// Changes the population size from the default value. Must be at least 2.
     pub fn population_size(mut self, population_size: usize) -> Self {
         self.population_size = population_size;
+        self
+    }
+
+    /// Changes the bounds from the defalt value. Vector length must match the number of dimensions.
+    pub fn bounds(mut self, lower: Vec<f64>, upper: Vec<f64>) -> Self {
+        self.bounds = Some(Bounds{lower, upper});
+        self
+    }
+
+    /// Changes the maximum number of resamples from the default value.
+    pub fn max_resamples(mut self, max_resamples: Option<usize>) -> Self {
+        self.max_resamples = max_resamples;
         self
     }
 
