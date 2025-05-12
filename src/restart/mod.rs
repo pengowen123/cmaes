@@ -317,7 +317,9 @@ impl Restarter {
             let seed = self.rng.gen();
 
             // Apply default configuration (may be overridden by individual restart strategies)
-            let mut options = self.default_options.clone()
+            let mut options = self
+                .default_options
+                .clone()
                 .initial_mean(initial_mean)
                 .mode(self.mode)
                 .parallel_update(self.parallel_update)

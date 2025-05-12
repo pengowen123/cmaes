@@ -4,8 +4,7 @@
 use std::ops::RangeInclusive;
 use std::time::Duration;
 
-
-use super::{DEFAULT_INITIAL_STEP_SIZE, RestartStrategy, Restarter};
+use super::{RestartStrategy, Restarter, DEFAULT_INITIAL_STEP_SIZE};
 use crate::{CMAESOptions, Mode};
 
 /// Represents invalid options for a `Restarter`.
