@@ -106,7 +106,7 @@ impl<F> Sampler<F> {
             }
 
             let mut bounds = self.bounds.as_ref();
-            if let Some(&max) = self.max_resamples.as_ref() {
+            if let Some(max) = self.max_resamples {
                 if i >= max {
                     bounds = None;
                 }
