@@ -32,7 +32,7 @@ pub struct Sampler<F> {
     /// Number of dimensions to sample from
     dim: usize,
     /// If set, resamples until all points are within bounds
-    bounds: Option<Bounds>,
+    constraints: Option<Box<dyn Constraints>>,
     /// The maximum number of resamples.
     /// If this limit is hit, uses points even if they are outside the bounds
     max_resamples: Option<usize>,
@@ -47,10 +47,10 @@ pub struct Sampler<F> {
 }
 
 impl<F> Sampler<F> {
-    pub fn new(dim: usize, bounds: Option<Bounds>, max_resamples: Option<usize>, population_size: usize, objective_function: F, rng_seed: u64) -> Self {
+    pub fn new(dim: usize, bounds: Option<Box<dyn Constraints>>, max_resamples: Option<usize>, population_size: usize, objective_function: F, rng_seed: u64) -> Self {
         Self {
             dim,
-            bounds,
+            constraints: bounds,
             max_resamples,
             population_size,
             rng: ChaCha12Rng::seed_from_u64(rng_seed),
@@ -115,7 +115,7 @@ impl<F> Sampler<F> {
                 break;
             }
 
-            let mut bounds = self.bounds.as_ref().map(|x| x as &dyn Constraints);
+            let mut bounds = self.constraints.as_ref().map(|x| x.as_ref());
             if let Some(max) = self.max_resamples {
                 if i >= max {
                     bounds = None;
@@ -312,7 +312,7 @@ mod tests {
 
         // No resampling: Value should be out-of-bounds
         {
-            let mut sampler = Sampler::new(dim, Some(bounds.clone()), Some(0), population_size, objective_function, 1);
+            let mut sampler = Sampler::new(dim, Some(Box::new(bounds.clone())), Some(0), population_size, objective_function, 1);
             let state = State::new(vec![0.0; dim].into(), 2.0);
             let individuals = sampler.sample(&state, Mode::Minimize, false).unwrap();
 
@@ -322,7 +322,7 @@ mod tests {
 
         // With limited resampling: Value should be in bounds
         {
-            let mut sampler = Sampler::new(dim, Some(bounds.clone()), Some(10), population_size, objective_function, 1);
+            let mut sampler = Sampler::new(dim, Some(Box::new(bounds.clone())), Some(10), population_size, objective_function, 1);
             let state = State::new(vec![0.0; dim].into(), 2.0);
             let individuals = sampler.sample(&state, Mode::Minimize, false).unwrap();
 
@@ -332,7 +332,7 @@ mod tests {
 
         // With unlimited resampling: Value should be in bounds
         {
-            let mut sampler = Sampler::new(dim, Some(bounds.clone()), None, population_size, objective_function, 1);
+            let mut sampler = Sampler::new(dim, Some(Box::new(bounds.clone())), None, population_size, objective_function, 1);
             let state = State::new(vec![0.0; dim].into(), 2.0);
             let individuals = sampler.sample(&state, Mode::Minimize, false).unwrap();
 
