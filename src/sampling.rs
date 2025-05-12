@@ -11,8 +11,15 @@ use crate::mode::Mode;
 use crate::state::State;
 use crate::{ObjectiveFunction, ParallelObjectiveFunction};
 
-pub trait Constraints : Sync {
+pub trait Constraints : Sync + std::fmt::Debug {
     fn meets_constraints(&self, x: &DVector<f64>) -> bool;
+    fn clone_box(&self) -> Box<dyn Constraints>;
+}
+
+impl Clone for Box<dyn Constraints> {
+    fn clone(&self) -> Box<dyn Constraints> {
+        self.clone_box()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -25,16 +32,20 @@ impl Constraints for Bounds {
     fn meets_constraints(&self, x: &DVector<f64>) -> bool {
         (0..x.len()).all(|i| x[i] >= self.lower[i] && x[i] <= self.upper[i])
     }
+
+    fn clone_box(&self) -> Box<dyn Constraints> {
+        Box::new(self.clone())
+    }
 }
 
 /// A type for sampling and evaluating points from the distribution for each generation
 pub struct Sampler<F> {
     /// Number of dimensions to sample from
     dim: usize,
-    /// If set, resamples until all points are within bounds
+    /// If set, resamples until all points satisfy the constraints
     constraints: Option<Box<dyn Constraints>>,
     /// The maximum number of resamples.
-    /// If this limit is hit, uses points even if they are outside the bounds
+    /// If this limit is hit, uses points even if they violate the constraints
     max_resamples: Option<usize>,
     /// Number of points to sample each generation
     population_size: usize,
@@ -47,10 +58,10 @@ pub struct Sampler<F> {
 }
 
 impl<F> Sampler<F> {
-    pub fn new(dim: usize, bounds: Option<Box<dyn Constraints>>, max_resamples: Option<usize>, population_size: usize, objective_function: F, rng_seed: u64) -> Self {
+    pub fn new(dim: usize, constraints: Option<Box<dyn Constraints>>, max_resamples: Option<usize>, population_size: usize, objective_function: F, rng_seed: u64) -> Self {
         Self {
             dim,
-            constraints: bounds,
+            constraints,
             max_resamples,
             population_size,
             rng: ChaCha12Rng::seed_from_u64(rng_seed),
@@ -85,15 +96,15 @@ impl<F> Sampler<F> {
 
             match constraints {
                 Some(constraints) => {
-                    let in_bounds = |yk: &DVector<f64>| {
+                    let ok_constraints = |yk: &DVector<f64>| {
                         let point = to_point(&yk, state.mean(), state.sigma());
                         constraints.meets_constraints(&point)
                     };
 
                     if parallel_update {
-                        z.into_par_iter().map(transform).filter(in_bounds).collect()
+                        z.into_par_iter().map(transform).filter(ok_constraints).collect()
                     } else {
-                        z.into_iter().map(transform).filter(in_bounds).collect()
+                        z.into_iter().map(transform).filter(ok_constraints).collect()
                     }
                 },
                 None => {
@@ -115,14 +126,14 @@ impl<F> Sampler<F> {
                 break;
             }
 
-            let mut bounds = self.constraints.as_ref().map(|x| x.as_ref());
+            let mut constraints = self.constraints.as_ref().map(|x| x.as_ref());
             if let Some(max) = self.max_resamples {
                 if i >= max {
-                    bounds = None;
+                    constraints = None;
                 }
             }
 
-            let mut new_samps: Vec<_> = sample(remain, bounds);
+            let mut new_samps: Vec<_> = sample(remain, constraints);
             y.append(&mut new_samps);
 
             i += 1;

@@ -7,6 +7,7 @@ use std::time::Duration;
 use crate::mode::Mode;
 use crate::parameters::Weights;
 use crate::sampling::Bounds;
+use crate::sampling::Constraints;
 #[cfg(feature = "plotters")]
 use crate::PlotOptions;
 use crate::CMAES;
@@ -53,9 +54,9 @@ pub struct CMAESOptions {
     /// [`BIPOP`][crate::restart::BIPOP] restart strategies (see the [`restart`][crate::restart]
     /// module).
     pub population_size: usize,
-    /// The bounds within which to search. Resamples until all samples are in bounds or
+    /// The constraints for the search. Resamples until all samples satisfy the constraints or
     /// `max_resamples` are hit. Default value is `None`.
-    pub bounds: Option<Bounds>,
+    pub constraints: Option<Box<dyn Constraints>>,
     /// How many times to resample points in order to stay inside `bounds`.
     /// `None` disables the limit. Defaults to 10.
     pub max_resamples: Option<usize>,
@@ -149,7 +150,7 @@ impl CMAESOptions {
             initial_mean,
             initial_step_size,
             population_size: 4 + (3.0 * (dimensions as f64).ln()).floor() as usize,
-            bounds: None,
+            constraints: None,
             max_resamples: Some(10),
             weights: Weights::Negative,
             parallel_update: false,
@@ -197,8 +198,15 @@ impl CMAESOptions {
     }
 
     /// Changes the bounds from the defalt value. Vector length must match the number of dimensions.
+    /// Convenience method for constraints().
     pub fn bounds(mut self, lower: Vec<f64>, upper: Vec<f64>) -> Self {
-        self.bounds = Some(Bounds{lower, upper});
+        self.constraints = Some(Box::new(Bounds{lower, upper}));
+        self
+    }
+
+    /// Changes the constraints from the defalt value.
+    pub fn constraints(mut self, constraints: Box<dyn Constraints>) -> Self {
+        self.constraints = Some(constraints);
         self
     }
 

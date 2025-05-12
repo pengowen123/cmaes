@@ -126,6 +126,7 @@ pub use crate::mode::Mode;
 pub use crate::objective_function::{ObjectiveFunction, ParallelObjectiveFunction};
 pub use crate::options::CMAESOptions;
 pub use crate::parameters::Weights;
+pub use crate::sampling::Constraints;
 pub use crate::sampling::Bounds;
 #[cfg(feature = "plotters")]
 pub use crate::plotting::PlotOptions;
@@ -252,7 +253,7 @@ impl<F> CMAES<F> {
         // Initialize point sampler
         let sampler = Sampler::new(
             dimensions,
-            options.bounds,
+            options.constraints,
             options.max_resamples,
             options.population_size,
             objective_function,
