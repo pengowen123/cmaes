@@ -126,10 +126,10 @@ pub use crate::mode::Mode;
 pub use crate::objective_function::{ObjectiveFunction, ParallelObjectiveFunction};
 pub use crate::options::CMAESOptions;
 pub use crate::parameters::Weights;
-pub use crate::sampling::Constraints;
-pub use crate::sampling::Bounds;
 #[cfg(feature = "plotters")]
 pub use crate::plotting::PlotOptions;
+pub use crate::sampling::Bounds;
+pub use crate::sampling::Constraints;
 pub use crate::termination::TerminationReason;
 
 use std::f64;

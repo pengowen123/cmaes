@@ -200,7 +200,7 @@ impl CMAESOptions {
     /// Changes the bounds from the defalt value. Vector length must match the number of dimensions.
     /// Convenience method for constraints().
     pub fn bounds(mut self, lower: Vec<f64>, upper: Vec<f64>) -> Self {
-        self.constraints = Some(Box::new(Bounds{lower, upper}));
+        self.constraints = Some(Box::new(Bounds { lower, upper }));
         self
     }
 

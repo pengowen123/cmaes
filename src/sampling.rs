@@ -11,7 +11,7 @@ use crate::mode::Mode;
 use crate::state::State;
 use crate::{ObjectiveFunction, ParallelObjectiveFunction};
 
-pub trait Constraints : Sync + std::fmt::Debug {
+pub trait Constraints: Sync + std::fmt::Debug {
     fn meets_constraints(&self, x: &DVector<f64>) -> bool;
     fn clone_box(&self) -> Box<dyn Constraints>;
 }
@@ -58,7 +58,14 @@ pub struct Sampler<F> {
 }
 
 impl<F> Sampler<F> {
-    pub fn new(dim: usize, constraints: Option<Box<dyn Constraints>>, max_resamples: Option<usize>, population_size: usize, objective_function: F, rng_seed: u64) -> Self {
+    pub fn new(
+        dim: usize,
+        constraints: Option<Box<dyn Constraints>>,
+        max_resamples: Option<usize>,
+        population_size: usize,
+        objective_function: F,
+        rng_seed: u64,
+    ) -> Self {
         Self {
             dim,
             constraints,
@@ -102,11 +109,17 @@ impl<F> Sampler<F> {
                     };
 
                     if parallel_update {
-                        z.into_par_iter().map(transform).filter(ok_constraints).collect()
+                        z.into_par_iter()
+                            .map(transform)
+                            .filter(ok_constraints)
+                            .collect()
                     } else {
-                        z.into_iter().map(transform).filter(ok_constraints).collect()
+                        z.into_iter()
+                            .map(transform)
+                            .filter(ok_constraints)
+                            .collect()
                     }
-                },
+                }
                 None => {
                     if parallel_update {
                         z.into_par_iter().map(transform).collect()
@@ -138,7 +151,6 @@ impl<F> Sampler<F> {
 
             i += 1;
         }
-
 
         let mut points = evaluate_points(y, &mut self.objective_function)?;
 
@@ -285,7 +297,14 @@ mod tests {
     fn test_sample() {
         let dim = 10;
         let population_size = 12;
-        let mut sampler = Sampler::new(dim, None, None, population_size, Box::new(|_: &DVector<f64>| 0.0), 1);
+        let mut sampler = Sampler::new(
+            dim,
+            None,
+            None,
+            population_size,
+            Box::new(|_: &DVector<f64>| 0.0),
+            1,
+        );
         let state = State::new(vec![0.0; dim].into(), 2.0);
 
         let n = 5;
@@ -323,17 +342,33 @@ mod tests {
 
         // No resampling: Value should be out-of-bounds
         {
-            let mut sampler = Sampler::new(dim, Some(Box::new(bounds.clone())), Some(0), population_size, objective_function, 1);
+            let mut sampler = Sampler::new(
+                dim,
+                Some(Box::new(bounds.clone())),
+                Some(0),
+                population_size,
+                objective_function,
+                1,
+            );
             let state = State::new(vec![0.0; dim].into(), 2.0);
             let individuals = sampler.sample(&state, Mode::Minimize, false).unwrap();
 
-            assert!(   individuals[0].point[0] < bounds.lower[0]
-                    || individuals[0].point[0] > bounds.upper[0]);
+            assert!(
+                individuals[0].point[0] < bounds.lower[0]
+                    || individuals[0].point[0] > bounds.upper[0]
+            );
         }
 
         // With limited resampling: Value should be in bounds
         {
-            let mut sampler = Sampler::new(dim, Some(Box::new(bounds.clone())), Some(10), population_size, objective_function, 1);
+            let mut sampler = Sampler::new(
+                dim,
+                Some(Box::new(bounds.clone())),
+                Some(10),
+                population_size,
+                objective_function,
+                1,
+            );
             let state = State::new(vec![0.0; dim].into(), 2.0);
             let individuals = sampler.sample(&state, Mode::Minimize, false).unwrap();
 
@@ -343,7 +378,14 @@ mod tests {
 
         // With unlimited resampling: Value should be in bounds
         {
-            let mut sampler = Sampler::new(dim, Some(Box::new(bounds.clone())), None, population_size, objective_function, 1);
+            let mut sampler = Sampler::new(
+                dim,
+                Some(Box::new(bounds.clone())),
+                None,
+                population_size,
+                objective_function,
+                1,
+            );
             let state = State::new(vec![0.0; dim].into(), 2.0);
             let individuals = sampler.sample(&state, Mode::Minimize, false).unwrap();
 
