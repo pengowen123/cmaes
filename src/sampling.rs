@@ -11,10 +11,20 @@ use crate::mode::Mode;
 use crate::state::State;
 use crate::{ObjectiveFunction, ParallelObjectiveFunction};
 
+pub trait Constraints : Sync {
+    fn meets_constraints(&self, x: &DVector<f64>) -> bool;
+}
+
 #[derive(Debug, Clone)]
 pub struct Bounds {
     pub lower: Vec<f64>,
     pub upper: Vec<f64>,
+}
+
+impl Constraints for Bounds {
+    fn meets_constraints(&self, x: &DVector<f64>) -> bool {
+        (0..x.len()).all(|i| x[i] >= self.lower[i] && x[i] <= self.upper[i])
+    }
 }
 
 /// A type for sampling and evaluating points from the distribution for each generation
@@ -62,7 +72,7 @@ impl<F> Sampler<F> {
         let normal = Normal::new(0.0, 1.0).unwrap();
 
         // Random steps in the distribution N(0, I)
-        let mut sample = |n: usize, bounds: Option<&Bounds>| {
+        let mut sample = |n: usize, constraints: Option<&dyn Constraints>| {
             let z = (0..n)
                 .map(|_| {
                     DVector::from_iterator(
@@ -73,11 +83,11 @@ impl<F> Sampler<F> {
                 .collect::<Vec<_>>();
             let transform = |zk| state.cov_transform() * zk;
 
-            match bounds {
-                Some(Bounds{lower, upper}) => {
+            match constraints {
+                Some(constraints) => {
                     let in_bounds = |yk: &DVector<f64>| {
                         let point = to_point(&yk, state.mean(), state.sigma());
-                        (0..yk.len()).all(|i| point[i] >= lower[i] && point[i] <= upper[i])
+                        constraints.meets_constraints(&point)
                     };
 
                     if parallel_update {
@@ -105,7 +115,7 @@ impl<F> Sampler<F> {
                 break;
             }
 
-            let mut bounds = self.bounds.as_ref();
+            let mut bounds = self.bounds.as_ref().map(|x| x as &dyn Constraints);
             if let Some(max) = self.max_resamples {
                 if i >= max {
                     bounds = None;
